@@ -181,3 +181,9 @@ footer span:last-child { letter-spacing: 0; text-align: right; }
   gap: .35rem;
 }
 .session-reset-row .field-note { margin: 0; }
+
+/* Recovery control should remain easy to find when the browser gets stuck. */
+.session-reset-row { align-items: stretch; }
+.session-reset-row #resetSessionBtn { display: inline-flex; justify-content: center; align-items: center; width: 100%; min-height: 42px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; background: #f1eee7; color: var(--ink); font-size: 13px; font-weight: 700; text-decoration: none; cursor: pointer; }
+.session-reset-row #resetSessionBtn:hover { background: #e8e2d7; }
+.session-reset-row #resetSessionBtn:disabled { opacity: .6; cursor: wait; }

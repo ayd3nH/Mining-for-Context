@@ -80,7 +80,10 @@ function friendlyError(error) {
     return "Supabase blocked this request. Check that you ran the database SQL and enabled anonymous sign-ins.";
   }
   if (/already in a room/i.test(raw)) {
-    return "This browser session is already in a room. Leave that room or refresh the page to start a new session.";
+    return 'Your account is still listed in a room. Click “Clear stuck room session” below, then try again.';
+  }
+  if (/game has already started|game already started|no longer in the lobby/i.test(raw)) {
+    return "That room's game has already started. Ask the host to start a new game or join a lobby that has not started.";
   }
   return raw;
 }
@@ -538,37 +541,43 @@ async function leaveRoom() {
 }
 async function clearRoomSession() {
   if (resetSessionBtn) resetSessionBtn.disabled = true;
-  setHomeMessage("Clearing saved room membership…");
+  setHomeMessage("Clearing this browser's room session and removing room membership…");
+
+  // Clear local browser state first, so a stale room never traps the UI if the
+  // server-side recovery RPC returns an error. We still call the RPC below to
+  // remove this authenticated user from Supabase room memberships.
+  if (pollHandle) clearInterval(pollHandle);
+  if (gamePollHandle) clearInterval(gamePollHandle);
+  pollHandle = null;
+  gamePollHandle = null;
+  gameState = null;
+  currentRoom = null;
+  currentPlayers = [];
+  renderedGameSignature = "";
+  selectedMessages = ["", ""];
+  activeImageIndex = null;
+  votedSubmission = null;
+  currentRoomId = null;
+  currentPlayerId = null;
+  currentRoomCode = null;
+  ["mfc_room_id", "mfc_room_code", "mfc_player_id", "mfc_username"].forEach(k => {
+    sessionStorage.removeItem(k);
+    localStorage.removeItem(k);
+  });
+  gameView.classList.add("hidden");
+  lobbyView.classList.add("hidden");
+  homeView.classList.remove("hidden");
+
   try {
-    // Remove this authenticated browser user from every room, then clear local state.
     const { error } = await db.rpc("mfc_leave_all_rooms");
     if (error) throw error;
-    if (pollHandle) clearInterval(pollHandle);
-    if (gamePollHandle) clearInterval(gamePollHandle);
-    pollHandle = null;
-    gamePollHandle = null;
-    gameState = null;
-    currentRoom = null;
-    currentPlayers = [];
-    renderedGameSignature = "";
-    selectedMessages = ["", ""];
-    activeImageIndex = null;
-    votedSubmission = null;
-    currentRoomId = null;
-    currentPlayerId = null;
-    currentRoomCode = null;
-    ["mfc_room_id", "mfc_room_code", "mfc_player_id", "mfc_username"].forEach(k => sessionStorage.removeItem(k));
-    gameView.classList.add("hidden");
-    lobbyView.classList.add("hidden");
-    homeView.classList.remove("hidden");
-    setHomeMessage("Room session cleared. You can create or join a room now.");
+    setHomeMessage("Room session cleared successfully. You can create a new room or join an active lobby now.");
   } catch (error) {
-    setHomeMessage(`Could not clear the room session: ${friendlyError(error)}. Make sure the updated SQL migration has been run.`);
+    setHomeMessage(`Browser session cleared, but Supabase could not remove the old room membership: ${friendlyError(error)}. Run the latest upgrade_content_on_demand.sql migration, then click this button again.`);
   } finally {
     if (resetSessionBtn) resetSessionBtn.disabled = false;
   }
 }
-
 async function startNewGame() {
   if (!currentRoomId || !gameState?.is_host) return;
   startNewGameBtn.disabled = true;

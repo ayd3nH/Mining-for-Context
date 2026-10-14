@@ -33,6 +33,10 @@
           </div>
         </div>
         <p id="homeMessage" class="message" role="status"></p>
+        <div class="session-reset-row">
+          <button id="resetSessionBtn" class="text-button" type="button">Clear stuck room session</button>
+          <p class="field-note">Use this if you cannot create or join a room.</p>
+        </div>
       </div>
       <p class="fine-print">No account needed. Choose a username and play.</p>
     </section>
@@ -59,8 +63,8 @@
           <div class="scan-panel" aria-live="polite">
             <div class="scan-heading"><strong id="scanTitle">Waiting for Soggybot</strong><span id="scanPercent">0%</span></div>
             <div class="progress-track"><div id="scanProgress" class="progress-fill"></div></div>
-            <p id="scanCounts" class="field-note">0 / 50 images · 0 / 200 messages</p>
-            <p id="scanDetail" class="field-note">The host can start once enough content is collected.</p>
+            <p id="scanCounts" class="field-note">Images and messages are gathered only after Start game is clicked.</p>
+            <p id="scanDetail" class="field-note">If more content is needed, Soggybot will collect it and the game will start automatically when ready.</p>
           </div>
           <div id="hostSettings" class="host-settings">
             <strong>Game settings</strong>
@@ -96,7 +100,7 @@
     <section id="gameView" class="game-view hidden" aria-live="polite">
       <div class="game-topline"><p id="gameRoundLabel" class="eyebrow">ROUND 1 OF 5</p><div class="game-top-actions"><span id="gameTimer" class="game-timer">01:00</span><button id="gameLeaveBtn" class="text-button">Leave room</button></div></div>
       <h1 id="gameTitle" class="game-title">Make two combos.</h1>
-      <p id="gameInstructions" class="intro">Drag each image onto the message you want to pair it with.</p>
+      <p id="gameInstructions" class="intro"></p>
       <div id="gameContent" class="game-content"></div>
       <p id="gameMessage" class="message" role="status"></p>
       <div class="game-actions">

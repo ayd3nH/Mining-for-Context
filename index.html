@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f1eb">
+  <title>Mining for Context</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <a class="wordmark" href="./">Mining <span>for Context</span></a>
+      <span class="status-dot"><span></span> Multiplayer party game</span>
+    </header>
+
+    <section id="homeView" class="hero">
+      <p class="eyebrow">YOUR SERVER. OUT OF CONTEXT.</p>
+      <h1>Every message has<br><em>a second life.</em></h1>
+      <p class="intro">Pair old server messages with unexpected images. Make your friends laugh. Take the credit.</p>
+
+      <div class="entry-card">
+        <label for="username">Your username</label>
+        <input id="username" maxlength="24" autocomplete="nickname" placeholder="What should we call you?">
+        <p class="field-note">Use the name your friends will recognize.</p>
+        <div class="action-grid">
+          <button id="createBtn" class="button button-primary">Create a room</button>
+          <div class="join-row">
+            <input id="roomCode" maxlength="6" autocomplete="off" placeholder="ROOM CODE" aria-label="Room code">
+            <button id="joinBtn" class="button button-secondary">Join</button>
+          </div>
+        </div>
+        <p id="homeMessage" class="message" role="status"></p>
+      </div>
+      <p class="fine-print">No account needed. Choose a username and play.</p>
+    </section>
+
+    <section id="lobbyView" class="lobby hidden">
+      <div class="lobby-heading">
+        <div>
+          <p class="eyebrow">ROOM LOBBY</p>
+          <h1>Get your people in.</h1>
+          <p class="intro small-intro">Share the code with everyone who’s playing.</p>
+        </div>
+        <button id="leaveBtn" class="text-button">Leave room</button>
+      </div>
+
+      <div class="lobby-layout">
+        <div class="room-card">
+          <span class="card-label">ROOM CODE</span>
+          <div class="code-line">
+            <strong id="roomCodeDisplay">------</strong>
+            <button id="copyCodeBtn" class="copy-button" aria-label="Copy room code">Copy</button>
+          </div>
+          <div class="rule"></div>
+          <div class="lobby-status"><span class="pulse"></span><span id="lobbyStatus">Waiting for players</span></div>
+          <p class="field-note">The game will start once the host is ready.</p>
+        </div>
+        <div class="players-card">
+          <div class="players-header">
+            <h2>Players</h2>
+            <span id="playerCount" class="count">0</span>
+          </div>
+          <ul id="playerList" class="player-list"></ul>
+          <p id="playerMessage" class="message" role="status"></p>
+        </div>
+      </div>
+      <p class="fine-print">Keep this page open while you play. The lobby refreshes automatically.</p>
+    </section>
+
+    <footer>
+      <span>MINING FOR CONTEXT</span>
+      <span>Built for questionable interpretations.</span>
+    </footer>
+  </main>
+</body>
+</html>

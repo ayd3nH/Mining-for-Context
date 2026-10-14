@@ -63,18 +63,19 @@
             <p id="scanDetail" class="field-note">The host can start once enough content is collected.</p>
           </div>
           <div id="hostSettings" class="host-settings">
+            <strong>Game settings</strong>
             <label for="roundsSetting">Rounds</label>
-            <select id="roundsSetting"><option value="5" selected>5 rounds</option><option value="3">3 rounds</option><option value="10">10 rounds</option><option value="15">15 rounds</option><option value="20">20 rounds</option></select>
-            <label for="modeSetting">Game mode</label>
-            <select id="modeSetting">
-              <option value="same_images_different_messages">Same images · different messages</option>
-              <option value="different_images_different_messages" selected>Different images · different messages</option>
-              <option value="different_images_same_messages">Different images · same messages</option>
-            </select>
+            <select id="roundsSetting"><option value="3">3 rounds</option><option value="5" selected>5 rounds</option><option value="8">8 rounds</option><option value="10">10 rounds</option></select>
             <div class="settings-pair">
-              <div><label for="pickTimeSetting">Match time</label><select id="pickTimeSetting"><option value="15" selected>15 seconds</option><option value="30">30 seconds</option><option value="45">45 seconds</option><option value="60">60 seconds</option></select></div>
+              <div><label for="pickTimeSetting">Selection time</label><select id="pickTimeSetting"><option value="30">30 seconds</option><option value="60" selected>60 seconds</option><option value="90">90 seconds</option><option value="120">120 seconds</option></select></div>
               <div><label for="voteTimeSetting">Voting time</label><select id="voteTimeSetting"><option value="15" selected>15 seconds</option><option value="30">30 seconds</option><option value="45">45 seconds</option><option value="60">60 seconds</option></select></div>
             </div>
+            <label for="modeSetting">Game mode</label>
+            <select id="modeSetting">
+              <option value="different_images_different_messages" selected>Different images + different messages</option>
+              <option value="same_images_different_messages">Same images + different messages</option>
+              <option value="different_images_same_messages">Different images + same messages</option>
+            </select>
           </div>
           <button id="startBtn" class="button button-primary start-button" disabled>Start game</button>
           <p id="startMessage" class="message" role="status"></p>
@@ -91,13 +92,17 @@
       <p class="fine-print">Keep this page open while you play. The lobby refreshes automatically.</p>
     </section>
 
-    <section id="gameView" class="game-view hidden">
-      <div class="game-topline"><span id="gameRoundLabel" class="eyebrow">ROUND 1 OF 5</span><span id="gameTimer" class="game-timer">00:15</span></div>
-      <h1 id="gameTitle" class="game-title">Make a combo.</h1>
-      <p id="gameInstructions" class="intro small-intro"></p>
+
+    <section id="gameView" class="game-view hidden" aria-live="polite">
+      <div class="game-topline"><p id="gameRoundLabel" class="eyebrow">ROUND 1 OF 5</p><span id="gameTimer" class="game-timer">01:00</span></div>
+      <h1 id="gameTitle" class="game-title">Make two combos.</h1>
+      <p id="gameInstructions" class="intro">Drag each image onto the message you want to pair it with.</p>
       <div id="gameContent" class="game-content"></div>
       <p id="gameMessage" class="message" role="status"></p>
-      <div class="game-actions"><button id="gameActionBtn" class="button button-primary">Submit combos</button><button id="gameNextBtn" class="button button-secondary hidden">Start next round</button></div>
+      <div class="game-actions">
+        <button id="gameActionBtn" class="button button-primary">Submit pairs</button>
+        <button id="gameNextBtn" class="button button-secondary hidden">Start next round</button>
+      </div>
       <div id="scoreboard" class="scoreboard"></div>
     </section>
 

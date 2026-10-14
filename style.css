@@ -129,3 +129,26 @@ footer span:last-child { letter-spacing: 0; text-align: right; }
 .score-row:first-of-type { border-top:0; }
 .winner-label { color:var(--accent); font-weight:800; }
 @media(max-width:650px) { .hand-grid,.submission-grid { grid-template-columns:1fr; } .game-view { padding-top:32px; } .game-actions { flex-direction:column; } .game-actions .button { width:100%; } }
+
+/* Drag-and-drop image/message pairing */
+.pairing-board { display:grid; grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); gap:16px; align-items:start; }
+.pairing-column { min-width:0; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
+.pairing-column > h3 { margin:0 0 8px; font-size:15px; }
+.draggable-image-grid { display:grid; grid-template-columns:1fr; gap:12px; margin-top:12px; }
+.draggable-image-card { min-width:0; padding:12px; border:2px solid var(--line); border-radius:10px; background:#fbfaf6; cursor:grab; transition:border-color .15s,background .15s,transform .15s; }
+.draggable-image-card:hover,.draggable-image-card:focus-visible { border-color:var(--accent); outline:none; }
+.draggable-image-card.is-active { border-color:var(--accent); background:var(--accent-soft); box-shadow:0 0 0 3px rgba(82,99,77,.12); }
+.draggable-image-card.is-paired { border-color:#87977d; }
+.draggable-image-card.is-dragging { opacity:.5; }
+.draggable-image-card h4 { margin:0 0 10px; font-size:13px; }
+.draggable-image-card img { width:100%; max-height:220px; object-fit:contain; display:block; background:#f0eee8; border-radius:6px; }
+.pair-status { display:block; font-size:11px; line-height:1.4; margin-top:9px; color:var(--accent-dark); overflow-wrap:anywhere; }
+.drop-message-list { margin-top:12px; }
+.drop-target { display:flex; flex-direction:column; align-items:stretch; gap:10px; cursor:pointer; min-height:76px; transition:border-color .15s,background .15s; }
+.drop-target.can-drop { border-style:dashed; border-color:#aab5a1; }
+.drop-target.drag-over { border-color:var(--accent); background:var(--accent-soft); box-shadow:0 0 0 2px rgba(82,99,77,.12); }
+.drop-target.has-pair { border-color:#87977d; background:#f0f3ec; }
+.drop-badge { align-self:flex-start; font-size:10px; font-weight:750; color:var(--accent-dark); background:#e8ece3; padding:4px 7px; border-radius:5px; }
+.game-actions .button-primary { min-width:180px; }
+@media(max-width:700px) { .pairing-board { grid-template-columns:1fr; } .draggable-image-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .draggable-image-card img { max-height:180px; } }
+@media(max-width:440px) { .draggable-image-grid { grid-template-columns:1fr; } }

@@ -51,7 +51,8 @@ let currentPlayers = [];
 let gamePollHandle = null;
 let gameState = null;
 let renderedGameSignature = "";
-let selectedMessages = ["", ""];
+let selectedMessages = ["", ""] ;
+let activeImageIndex = null;
 let votedSubmission = null;
 
 function setHomeMessage(message = "") {
@@ -300,13 +301,13 @@ function renderGameState(state) {
   }
   if (phase === "selecting") {
     gameTitle.textContent = state.my_submitted ? "Combos submitted." : "Make two combos.";
-    gameInstructions.textContent = state.my_submitted ? "Waiting for the 15-second matching phase to end. The reveal comes next." : "Match each of your two images with a different message. You have five messages and two combos to make.";
+    gameInstructions.textContent = state.my_submitted ? "Your pairs are locked in. Voting starts when everyone has submitted or when the timer runs out." : "Drag each image onto the message you want to pair it with. You can also select an image, then tap a message. Submit when both pairs are ready. You have up to 60 seconds.";
     if (!state.my_submitted) renderHand(state.hand || {});
     else {
       const wait = document.createElement("div"); wait.className="hand-card"; wait.textContent="Your choices are locked in. Waiting for the timer…"; gameContent.append(wait);
       gameActionBtn.classList.add("hidden");
     }
-    gameActionBtn.textContent = "Submit two combos";
+    gameActionBtn.textContent = "Submit pairs";
     gameActionBtn.disabled = !!state.my_submitted;
     return;
   }
@@ -336,25 +337,108 @@ function renderGameState(state) {
 function renderHand(hand) {
   const images = hand.images || [];
   const messages = hand.messages || [];
-  const grid = document.createElement("div"); grid.className = "hand-grid";
-  images.slice(0,2).forEach((img, index) => {
-    const card = document.createElement("article"); card.className="hand-card";
-    const title = document.createElement("h3"); title.textContent = `Image ${index+1}`;
-    const image = document.createElement("img"); image.src=img.url; image.alt=`Your image ${index+1}`; image.loading="lazy";
-    const label = document.createElement("label"); label.textContent="Match with a message"; label.htmlFor=`messageChoice${index}`;
-    const select = document.createElement("select"); select.id=`messageChoice${index}`;
-    const blank = document.createElement("option"); blank.value=""; blank.textContent="Choose a message…"; select.append(blank);
-    messages.forEach((msg, mi) => { const option=document.createElement("option"); option.value=msg.id; option.textContent=`${mi+1}. ${msg.text}`; select.append(option); });
-    select.value=selectedMessages[index] || "";
-    select.addEventListener("change", () => { selectedMessages[index]=select.value; });
-    card.append(title,image,label,select); grid.append(card);
+  const wrap = document.createElement("div");
+  wrap.className = "pairing-board";
+
+  const imageColumn = document.createElement("section");
+  imageColumn.className = "pairing-column";
+  const imageHeading = document.createElement("h3");
+  imageHeading.textContent = "Your images";
+  const imageHint = document.createElement("p");
+  imageHint.className = "field-note";
+  imageHint.textContent = "Drag an image onto a message, or select an image then tap a message.";
+  imageColumn.append(imageHeading, imageHint);
+  const imageGrid = document.createElement("div");
+  imageGrid.className = "draggable-image-grid";
+  images.slice(0, 2).forEach((img, index) => {
+    const card = document.createElement("article");
+    card.className = "draggable-image-card" + (activeImageIndex === index ? " is-active" : "") + (selectedMessages[index] ? " is-paired" : "");
+    card.draggable = true;
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `Image ${index + 1}; ${selectedMessages[index] ? "paired" : "not paired"}`);
+    const title = document.createElement("h4");
+    title.textContent = `Image ${index + 1}`;
+    const image = document.createElement("img");
+    image.src = img.url;
+    image.alt = `Your image ${index + 1}`;
+    image.loading = "lazy";
+    const pairLabel = document.createElement("span");
+    pairLabel.className = "pair-status";
+    const pairedMessage = messages.find((m) => m.id === selectedMessages[index]);
+    pairLabel.textContent = pairedMessage ? `Paired: ${pairedMessage.text}` : "Drop onto a message";
+    card.addEventListener("dragstart", (event) => {
+      activeImageIndex = index;
+      event.dataTransfer.setData("text/plain", String(index));
+      event.dataTransfer.effectAllowed = "link";
+      card.classList.add("is-dragging");
+    });
+    card.addEventListener("dragend", () => card.classList.remove("is-dragging"));
+    card.addEventListener("click", () => {
+      activeImageIndex = index;
+      renderHand(hand);
+    });
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault(); activeImageIndex = index; renderHand(hand);
+      }
+    });
+    card.append(title, image, pairLabel);
+    imageGrid.append(card);
   });
-  gameContent.append(grid);
-  const list = document.createElement("div"); list.className="hand-card";
-  const h = document.createElement("h3"); h.textContent="Your five messages"; list.append(h);
-  const messagesList = document.createElement("div"); messagesList.className="message-list";
-  messages.forEach((msg,i)=>{ const item=document.createElement("div"); item.className="message-option"; item.textContent=`${i+1}. ${msg.text}`; messagesList.append(item); });
-  list.append(messagesList); gameContent.append(list);
+  imageColumn.append(imageGrid);
+
+  const messageColumn = document.createElement("section");
+  messageColumn.className = "pairing-column";
+  const messageHeading = document.createElement("h3");
+  messageHeading.textContent = "Your five messages";
+  messageColumn.append(messageHeading);
+  const messageList = document.createElement("div");
+  messageList.className = "message-list drop-message-list";
+  messages.forEach((msg, i) => {
+    const item = document.createElement("div");
+    item.className = "message-option drop-target";
+    const pairIndexes = selectedMessages.map((id, index) => id === msg.id ? index : -1).filter((index) => index >= 0);
+    if (pairIndexes.length) item.classList.add("has-pair");
+    if (activeImageIndex !== null && !pairIndexes.length) item.classList.add("can-drop");
+    const text = document.createElement("span");
+    text.textContent = `${i + 1}. ${msg.text}`;
+    const badge = document.createElement("span");
+    badge.className = "drop-badge";
+    badge.textContent = pairIndexes.length ? `Image ${pairIndexes.map((n) => n + 1).join(" & ")}` : "Drop image here";
+    item.append(text, badge);
+    item.addEventListener("dragover", (event) => { event.preventDefault(); item.classList.add("drag-over"); event.dataTransfer.dropEffect = "link"; });
+    item.addEventListener("dragleave", () => item.classList.remove("drag-over"));
+    item.addEventListener("drop", (event) => {
+      event.preventDefault(); item.classList.remove("drag-over");
+      const rawIndex = event.dataTransfer.getData("text/plain");
+      const index = rawIndex === "" ? activeImageIndex : Number(rawIndex);
+      if (index === null || !Number.isInteger(index) || index < 0 || index > 1) return;
+      assignMessage(index, msg.id, hand);
+    });
+    item.addEventListener("click", () => {
+      if (activeImageIndex === null) {
+        gameMessage.textContent = "Select an image first, then tap the message you want to pair it with.";
+        return;
+      }
+      assignMessage(activeImageIndex, msg.id, hand);
+    });
+    messageList.append(item);
+  });
+  messageColumn.append(messageList);
+  wrap.append(imageColumn, messageColumn);
+  gameContent.append(wrap);
+}
+
+function assignMessage(imageIndex, messageId, hand) {
+  const otherIndex = imageIndex === 0 ? 1 : 0;
+  if (selectedMessages[otherIndex] === messageId) {
+    selectedMessages[otherIndex] = "";
+  }
+  selectedMessages[imageIndex] = messageId;
+  activeImageIndex = null;
+  gameMessage.textContent = "";
+  renderHand(hand);
 }
 
 function renderSubmissions(state, voting) {
@@ -424,7 +508,7 @@ gameActionBtn.addEventListener("click", async () => {
   if (!gameState || !gameState.hand) return;
   const [imageA,imageB] = gameState.hand.images || [];
   if (!imageA || !imageB) { gameMessage.textContent="This hand is missing images. Please ask the host to restart the round."; return; }
-  if (!selectedMessages[0] || !selectedMessages[1]) { gameMessage.textContent="Choose a message for both images."; return; }
+  if (!selectedMessages[0] || !selectedMessages[1]) { gameMessage.textContent="Pair both images with a message before submitting."; return; }
   if (selectedMessages[0] === selectedMessages[1]) { gameMessage.textContent="Choose two different messages."; return; }
   gameActionBtn.disabled=true;
   const pairs=[{image_id:imageA.id,message_id:selectedMessages[0]},{image_id:imageB.id,message_id:selectedMessages[1]}];
@@ -456,19 +540,7 @@ document.querySelector("#copyCodeBtn").addEventListener("click", async () => {
 });
 document.querySelector("#leaveBtn").addEventListener("click", leaveRoom);
 
-// Restore this tab's room after a refresh, using the existing anonymous auth session.
-(async function restoreRoom() {
-  const roomId = sessionStorage.getItem("mfc_room_id");
-  const code = sessionStorage.getItem("mfc_room_code");
-  const playerId = sessionStorage.getItem("mfc_player_id");
-  const name = sessionStorage.getItem("mfc_username");
-  if (!roomId || !code || !playerId || !name) return;
-  try {
-    const { data: { session } } = await db.auth.getSession();
-    if (!session || session.user.id !== playerId) return;
-    usernameInput.value = name;
-    enterRoom(roomId, code, playerId, session.user.id, name);
-  } catch {
-    // The landing screen remains available if restoration fails.
-  }
-})();
+// Always show the create/join landing screen on a fresh page load.
+// Room session details remain in sessionStorage so the UI can offer recovery later,
+// but we intentionally do not auto-enter the lobby/game on refresh.
+

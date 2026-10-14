@@ -225,6 +225,7 @@ function updateScanDisplay(room, players) {
   const ready = room.scan_status === "ready" || (images >= 50 && messages >= 200);
   const failed = room.scan_status === "failed";
   const isHost = players.some((p) => (p.is_host || p.id === room.host_player_id) && p.id === currentPlayerId);
+  hostSettings.classList.toggle("hidden", !isHost || room.status !== "lobby");
   scanProgress.style.width = `${percent}%`;
   scanPercent.textContent = `${percent}%`;
   scanCounts.textContent = `${Math.min(images, 50)} / 50 images · ${Math.min(messages, 200)} / 200 messages`;
@@ -338,103 +339,56 @@ function renderHand(hand) {
   const images = hand.images || [];
   const messages = hand.messages || [];
   const wrap = document.createElement("div");
-  wrap.className = "pairing-board";
-
-  const imageColumn = document.createElement("section");
-  imageColumn.className = "pairing-column";
-  const imageHeading = document.createElement("h3");
-  imageHeading.textContent = "Your images";
-  const imageHint = document.createElement("p");
-  imageHint.className = "field-note";
-  imageHint.textContent = "Drag an image onto a message, or select an image then tap a message.";
-  imageColumn.append(imageHeading, imageHint);
+  wrap.className = "pairing-board pairing-board-clean";
   const imageGrid = document.createElement("div");
-  imageGrid.className = "draggable-image-grid";
+  imageGrid.className = "pairing-image-grid";
   images.slice(0, 2).forEach((img, index) => {
     const card = document.createElement("article");
-    card.className = "draggable-image-card" + (activeImageIndex === index ? " is-active" : "") + (selectedMessages[index] ? " is-paired" : "");
-    card.draggable = true;
-    card.tabIndex = 0;
-    card.setAttribute("role", "button");
-    card.setAttribute("aria-label", `Image ${index + 1}; ${selectedMessages[index] ? "paired" : "not paired"}`);
-    const title = document.createElement("h4");
-    title.textContent = `Image ${index + 1}`;
-    const image = document.createElement("img");
-    image.src = img.url;
-    image.alt = `Your image ${index + 1}`;
-    image.loading = "lazy";
-    const pairLabel = document.createElement("span");
-    pairLabel.className = "pair-status";
-    const pairedMessage = messages.find((m) => m.id === selectedMessages[index]);
-    pairLabel.textContent = pairedMessage ? `Paired: ${pairedMessage.text}` : "Drop onto a message";
-    card.addEventListener("dragstart", (event) => {
-      activeImageIndex = index;
-      event.dataTransfer.setData("text/plain", String(index));
-      event.dataTransfer.effectAllowed = "link";
-      card.classList.add("is-dragging");
+    card.className = "pairing-image-card";
+    const heading = document.createElement("h3"); heading.textContent = `Image ${index + 1}`;
+    const image = document.createElement("img"); image.src = img.url; image.alt = `Image ${index + 1}`; image.loading = "lazy";
+    const slot = document.createElement("div");
+    slot.className = "pair-drop-slot" + (selectedMessages[index] ? " filled" : "");
+    const picked = messages.find(m => m.id === selectedMessages[index]);
+    slot.textContent = picked ? `“${String(picked.text).replace(/^[“\"']|[”\"']$/g, "").trim()}”` : "Drop a message here";
+    slot.addEventListener("dragover", e => { e.preventDefault(); slot.classList.add("drag-over"); });
+    slot.addEventListener("dragleave", () => slot.classList.remove("drag-over"));
+    slot.addEventListener("drop", e => {
+      e.preventDefault(); slot.classList.remove("drag-over");
+      const id = e.dataTransfer.getData("text/plain");
+      if (id) assignMessage(index, id, hand);
     });
-    card.addEventListener("dragend", () => card.classList.remove("is-dragging"));
-    card.addEventListener("click", () => {
-      activeImageIndex = index;
-      renderHand(hand);
+    slot.addEventListener("click", () => {
+      if (selectedMessages[index]) { selectedMessages[index] = ""; renderHand(hand); }
+      else gameMessage.textContent = "Drag a message into this slot. You can click a message to assign it to the next empty slot.";
     });
-    card.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault(); activeImageIndex = index; renderHand(hand);
-      }
-    });
-    card.append(title, image, pairLabel);
-    imageGrid.append(card);
+    card.append(heading, image, slot); imageGrid.append(card);
   });
-  imageColumn.append(imageGrid);
-
-  const messageColumn = document.createElement("section");
-  messageColumn.className = "pairing-column";
-  const messageHeading = document.createElement("h3");
-  messageHeading.textContent = "Your five messages";
-  messageColumn.append(messageHeading);
-  const messageList = document.createElement("div");
-  messageList.className = "message-list drop-message-list";
+  const messageSection = document.createElement("section"); messageSection.className = "pairing-messages";
+  const heading = document.createElement("h3"); heading.textContent = "Drag one of these five messages into a slot";
+  const list = document.createElement("div"); list.className = "message-list clean-message-list";
   messages.forEach((msg, i) => {
-    const item = document.createElement("div");
-    item.className = "message-option drop-target";
-    const pairIndexes = selectedMessages.map((id, index) => id === msg.id ? index : -1).filter((index) => index >= 0);
-    if (pairIndexes.length) item.classList.add("has-pair");
-    if (activeImageIndex !== null && !pairIndexes.length) item.classList.add("can-drop");
-    const text = document.createElement("span");
-    text.textContent = `${i + 1}. ${msg.text}`;
-    const badge = document.createElement("span");
-    badge.className = "drop-badge";
-    badge.textContent = pairIndexes.length ? `Image ${pairIndexes.map((n) => n + 1).join(" & ")}` : "Drop image here";
-    item.append(text, badge);
-    item.addEventListener("dragover", (event) => { event.preventDefault(); item.classList.add("drag-over"); event.dataTransfer.dropEffect = "link"; });
-    item.addEventListener("dragleave", () => item.classList.remove("drag-over"));
-    item.addEventListener("drop", (event) => {
-      event.preventDefault(); item.classList.remove("drag-over");
-      const rawIndex = event.dataTransfer.getData("text/plain");
-      const index = rawIndex === "" ? activeImageIndex : Number(rawIndex);
-      if (index === null || !Number.isInteger(index) || index < 0 || index > 1) return;
-      assignMessage(index, msg.id, hand);
-    });
+    const usedIndex = selectedMessages.indexOf(msg.id);
+    const item = document.createElement("div"); item.className = "message-option clean-message" + (usedIndex >= 0 ? " message-used" : "");
+    item.draggable = usedIndex < 0;
+    const text = document.createElement("span"); text.textContent = `“${String(msg.text).replace(/^[“\"']|[”\"']$/g, "").trim()}”`;
+    const hint = document.createElement("span"); hint.className = "message-drag-hint"; hint.textContent = usedIndex >= 0 ? `Used for image ${usedIndex + 1}` : "Drag";
+    item.append(text, hint);
+    item.addEventListener("dragstart", e => { if (usedIndex >= 0) { e.preventDefault(); return; } e.dataTransfer.setData("text/plain", msg.id); e.dataTransfer.effectAllowed = "move"; });
     item.addEventListener("click", () => {
-      if (activeImageIndex === null) {
-        gameMessage.textContent = "Select an image first, then tap the message you want to pair it with.";
-        return;
-      }
-      assignMessage(activeImageIndex, msg.id, hand);
+      const already = selectedMessages.indexOf(msg.id);
+      if (already >= 0) selectedMessages[already] = "";
+      else { const empty = selectedMessages.findIndex(x => !x); if (empty < 0) { gameMessage.textContent = "Both slots are full. Remove a message from a slot first."; return; } selectedMessages[empty] = msg.id; }
+      gameMessage.textContent = ""; renderHand(hand);
     });
-    messageList.append(item);
+    list.append(item);
   });
-  messageColumn.append(messageList);
-  wrap.append(imageColumn, messageColumn);
-  gameContent.append(wrap);
+  messageSection.append(heading, list); wrap.append(imageGrid, messageSection); gameContent.append(wrap);
 }
 
 function assignMessage(imageIndex, messageId, hand) {
   const otherIndex = imageIndex === 0 ? 1 : 0;
-  if (selectedMessages[otherIndex] === messageId) {
-    selectedMessages[otherIndex] = "";
-  }
+  if (selectedMessages[otherIndex] === messageId) selectedMessages[otherIndex] = "";
   selectedMessages[imageIndex] = messageId;
   activeImageIndex = null;
   gameMessage.textContent = "";
@@ -484,24 +438,26 @@ async function nextRound() {
 }
 
 async function leaveRoom() {
-  if (pollHandle) clearInterval(pollHandle);
-  if (gamePollHandle) clearInterval(gamePollHandle);
-  pollHandle = null;
-  gamePollHandle = null;
-  gameState = null;
-  renderedGameSignature = "";
-  currentRoomId = null;
-  currentPlayerId = null;
-  currentRoomCode = null;
-  // The prototype intentionally leaves the database row intact; room cleanup can be added later.
-  sessionStorage.removeItem("mfc_room_id");
-  sessionStorage.removeItem("mfc_room_code");
-  sessionStorage.removeItem("mfc_player_id");
-  sessionStorage.removeItem("mfc_username");
-  lobbyView.classList.add("hidden");
-  homeView.classList.remove("hidden");
-  setHomeMessage("You left the lobby view. Your player entry remains until room cleanup is added.");
+  const btn = document.querySelector("#leaveBtn");
+  btn.disabled = true;
+  try {
+    if (currentRoomId) {
+      const { error } = await db.rpc("mfc_leave_room", { target_room: currentRoomId });
+      if (error) throw error;
+    }
+    if (pollHandle) clearInterval(pollHandle);
+    if (gamePollHandle) clearInterval(gamePollHandle);
+    pollHandle = null; gamePollHandle = null; gameState = null; currentRoom = null; currentPlayers = [];
+    renderedGameSignature = ""; selectedMessages = ["", ""]; activeImageIndex = null;
+    currentRoomId = null; currentPlayerId = null; currentRoomCode = null;
+    ["mfc_room_id", "mfc_room_code", "mfc_player_id", "mfc_username"].forEach(k => sessionStorage.removeItem(k));
+    gameView.classList.add("hidden"); lobbyView.classList.add("hidden"); homeView.classList.remove("hidden");
+    setHomeMessage("You left the room. You can create or join another one now.");
+  } catch (error) {
+    setPlayerMessage(`Could not leave room: ${friendlyError(error)}. Run the updated SQL migration first.`);
+  } finally { btn.disabled = false; }
 }
+
 createBtn.addEventListener("click", createRoom);
 startBtn.addEventListener("click", startGame);
 gameActionBtn.addEventListener("click", async () => {

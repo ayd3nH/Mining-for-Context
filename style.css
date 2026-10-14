@@ -152,3 +152,19 @@ footer span:last-child { letter-spacing: 0; text-align: right; }
 .game-actions .button-primary { min-width:180px; }
 @media(max-width:700px) { .pairing-board { grid-template-columns:1fr; } .draggable-image-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .draggable-image-card img { max-height:180px; } }
 @media(max-width:440px) { .draggable-image-grid { grid-template-columns:1fr; } }
+
+/* Clean two-image pairing board */
+.pairing-board-clean { display: grid; gap: 1.5rem; }
+.pairing-image-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.pairing-image-card { min-width: 0; border: 1px solid var(--line, #dedbd4); border-radius: 16px; padding: 12px; background: var(--card, #fff); }
+.pairing-image-card h3, .pairing-messages h3 { margin: 0 0 .75rem; font-size: 1rem; }
+.pairing-image-card img { display: block; width: 100%; height: 220px; object-fit: contain; background: #f2f0eb; border-radius: 10px; }
+.pair-drop-slot { display:flex; align-items:center; justify-content:center; min-height:76px; margin-top:10px; padding:12px; border:2px dashed #aaa69d; border-radius:10px; text-align:center; color:#69665f; overflow-wrap:anywhere; background:#faf9f6; }
+.pair-drop-slot.filled { border-style:solid; border-color:#63846b; background:#eef5ee; color:#263b2b; }
+.pair-drop-slot.drag-over { border-color:#2d7950; background:#e2f4e7; }
+.clean-message-list { display:grid; grid-template-columns:1fr; gap:8px; }
+.clean-message { display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:grab; }
+.clean-message > span:first-child { overflow-wrap:anywhere; }
+.message-drag-hint { flex:0 0 auto; color:#77736c; font-size:.75rem; }
+.clean-message.message-used { opacity:.55; cursor:default; }
+@media(max-width:600px) { .pairing-image-grid { grid-template-columns:1fr; } .pairing-image-card img { height:190px; } }

@@ -58,6 +58,7 @@
             <strong id="roomCodeDisplay">------</strong>
             <button id="copyCodeBtn" class="copy-button" aria-label="Copy room code">Copy</button>
           </div>
+          <div class="host-display-link"><button id="openHostDisplayBtn" class="button button-secondary" type="button">Open spectator Host Mode ↗</button><p class="field-note">Open this link on a TV or second device. Keep this browser for host controls.</p></div>
           <div class="rule"></div>
           <div class="lobby-status"><span class="pulse"></span><span id="lobbyStatus">Waiting for players</span></div>
           <div class="scan-panel" aria-live="polite">
@@ -109,6 +110,28 @@
         <button id="startNewGameBtn" class="button button-secondary hidden">Start new game</button>
       </div>
       <div id="scoreboard" class="scoreboard"></div>
+    </section>
+
+    <section id="hostView" class="host-view hidden" aria-live="polite">
+      <header class="host-display-header">
+        <a class="wordmark" href="./">Mining <span>for Context</span></a>
+        <div class="host-room-pill">ROOM <strong id="hostRoomCode">------</strong></div>
+      </header>
+      <div id="hostLobby" class="host-lobby">
+        <p class="eyebrow">SPECTATOR HOST MODE</p>
+        <h1>Get your people in.</h1>
+        <p class="host-code-large" id="hostCodeLarge">------</p>
+        <p class="host-subtitle">Join on your phones. The game will appear here when the host starts.</p>
+        <div id="hostPlayers" class="host-players"></div>
+      </div>
+      <div id="hostGame" class="host-game hidden">
+        <div class="host-game-top"><p id="hostRoundLabel" class="eyebrow">ROUND 1</p><p id="hostMatchupLabel" class="host-matchup-label">MATCHUP 1</p></div>
+        <h1 id="hostGameTitle">Get ready…</h1>
+        <p id="hostGameSubtitle" class="host-subtitle"></p>
+        <div id="hostMatchup" class="host-matchup"></div>
+        <div id="hostScoreboard" class="host-scoreboard"></div>
+      </div>
+      <p id="hostError" class="host-error" role="status"></p>
     </section>
 
     <footer>

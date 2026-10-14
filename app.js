@@ -43,6 +43,11 @@ const gameNextBtn = document.querySelector("#gameNextBtn");
 const gameLeaveBtn = document.querySelector("#gameLeaveBtn");
 const startNewGameBtn = document.querySelector("#startNewGameBtn");
 const scoreboard = document.querySelector("#scoreboard");
+const hostView = document.querySelector("#hostView");
+const hostDisplayBtn = document.querySelector("#openHostDisplayBtn");
+let hostPollHandle = null;
+let hostDisplayMode = false;
+let hostLastSignature = "";
 
 let currentRoomId = null;
 let currentPlayerId = null;
@@ -244,6 +249,7 @@ function updateScanDisplay(room, players) {
   const messageProgress = Math.min(messages / 200, 1);
   const percent = Math.round(((imageProgress + messageProgress) / 2) * 100);
   const isHost = players.some((p) => (p.is_host || p.id === room.host_player_id) && p.id === currentPlayerId);
+  if (hostDisplayBtn) hostDisplayBtn.classList.toggle("hidden", !isHost);
   scanProgress.style.width = "0%";
   scanPercent.textContent = "On demand";
   scanCounts.textContent = "Images and messages are gathered only after Start game is clicked.";
@@ -253,7 +259,7 @@ function updateScanDisplay(room, players) {
   startBtn.textContent = isHost ? "Start game" : "Waiting for host";
   if (room.status === "playing") {
     scanTitle.textContent = "Room started";
-    scanDetail.textContent = "The room is marked as started. The round and voting interface is the next game feature to build.";
+    scanDetail.textContent = "The game is running. Use the separate spectator Host Mode display for the shared big-screen view.";
     startBtn.disabled = true;
   }
 }
@@ -334,13 +340,17 @@ async function loadGameState() {
   }
   gameState = data;
   const round = data.round || {};
+  const matchup = data.current_matchup || {};
+  const elapsed = matchup.reveal_started_at ? Math.max(0, (Date.now() - new Date(matchup.reveal_started_at).getTime()) / 1000) : 0;
+  const revealStep = matchup.status === "revealing" ? Math.min(3, Math.floor(elapsed / 5)) : 4;
   const signature = JSON.stringify({status:data.status, phase:round.phase, id:round.id, submitted:data.my_submitted,
-    submissions:(data.submissions||[]).map(s=>[s.id,s.votes]), my_vote:data.my_vote, scores:data.scores});
+    submissions:(data.submissions||[]).map(s=>[s.id,s.votes]), my_vote:data.my_vote, scores:data.scores,
+    matchup:matchup.id, matchupStatus:matchup.status, revealStep, votesCast:matchup.votes_cast});
   if (signature !== renderedGameSignature) {
     renderedGameSignature = signature;
     renderGameState(data);
   }
-  const deadline = round.phase === "selecting" ? round.selection_deadline : round.phase === "voting" ? round.voting_deadline : null;
+  const deadline = round.phase === "selecting" ? round.selection_deadline : (round.phase === "voting" && matchup.status === "voting") ? matchup.voting_deadline : null;
   if (deadline) {
     const seconds = Math.max(0, Math.ceil((new Date(deadline).getTime() - Date.now()) / 1000));
     gameTimer.textContent = `00:${String(seconds).padStart(2,"0")}`;
@@ -380,15 +390,16 @@ function renderGameState(state) {
     return;
   }
   if (phase === "voting") {
-    gameTitle.textContent = "Pick the funniest.";
-    gameInstructions.textContent = "Vote for one combo. You cannot vote for your own submission.";
-    renderSubmissions(state, true);
+    const matchup = state.current_matchup;
+    gameTitle.textContent = matchup?.status === "voting" ? "Which entry wins?" : "The showdown is unfolding…";
+    gameInstructions.textContent = "Two entries face off. Each eligible player votes once; you cannot vote if either entry is yours.";
+    renderHeadToHead(state);
     gameActionBtn.classList.add("hidden");
     return;
   }
   if (phase === "results") {
     gameTitle.textContent = "Round results.";
-    gameInstructions.textContent = "The most-voted combo earns 3 points; the runner-up earns 1.";
+    gameInstructions.textContent = "Each vote earns the entry's owner 2 points. Every voter earns 1 point, and a unanimous matchup earns the winning entry an extra point.";
     renderSubmissions(state, false);
     gameActionBtn.classList.add("hidden");
     if (state.is_host) {
@@ -493,31 +504,67 @@ function assignMessage(imageIndex, messageId, hand) {
   renderHand(hand);
 }
 
+function renderHeadToHead(state) {
+  const m = state.current_matchup;
+  if (!m) {
+    const wait = document.createElement("div"); wait.className = "hand-card";
+    wait.textContent = "Preparing fair head-to-head matchups…"; gameContent.append(wait); return;
+  }
+  const elapsed = m.reveal_started_at ? Math.max(0, (Date.now() - new Date(m.reveal_started_at).getTime()) / 1000) : 0;
+  const step = m.status === "voting" ? 4 : Math.min(3, Math.floor(elapsed / 5));
+  const grid = document.createElement("div"); grid.className = "head-to-head-grid";
+  [m.a, m.b].forEach((entry, index) => {
+    const side = index === 0 ? "A" : "B";
+    const msgVisible = index === 0 ? step >= 0 : step >= 2;
+    const imageVisible = index === 0 ? step >= 1 : step >= 3;
+    const card = document.createElement("article"); card.className = "submission-card head-to-head-card";
+    const label = document.createElement("span"); label.className = "eyebrow"; label.textContent = `ENTRY ${side}`; card.append(label);
+    if (msgVisible) {
+      const msg = document.createElement("p"); msg.className = "reveal-in head-to-head-message";
+      msg.textContent = `“${String(entry.message_text || "").replace(/^[“"']|[”"']$/g, "").trim()}”`; card.append(msg);
+    } else { const waiting = document.createElement("div"); waiting.className = "reveal-placeholder"; waiting.textContent = "Message incoming…"; card.append(waiting); }
+    if (imageVisible) {
+      const img = document.createElement("img"); img.className = "reveal-in"; img.src = entry.image_url; img.alt = `Entry ${side} image`; card.append(img);
+    } else { const waiting = document.createElement("div"); waiting.className = "reveal-placeholder image-placeholder"; waiting.textContent = "Image reveal next"; card.append(waiting); }
+    if (m.status === "voting") {
+      const ownEntry = entry.player_id === currentPlayerId;
+      const alreadyVoted = !!m.my_vote;
+      const btn = document.createElement("button"); btn.className = "button button-primary";
+      btn.textContent = m.my_vote === entry.id ? `Your vote: ${side}` : `Vote for ${side}`;
+      btn.disabled = ownEntry || alreadyVoted;
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        const { error } = await db.rpc("mfc_vote_matchup", { target_room: currentRoomId, target_matchup: m.id, target_submission: entry.id });
+        if (error) { gameMessage.textContent = friendlyError(error); btn.disabled = false; }
+        else { gameMessage.textContent = "Vote recorded. You earn 1 point for voting."; renderedGameSignature = ""; await loadGameState(); }
+      });
+      card.append(btn);
+      if (ownEntry) { const note=document.createElement("span"); note.className="submission-author"; note.textContent="Your entry — you cannot vote in this matchup."; card.append(note); }
+    } else {
+      const note=document.createElement("span"); note.className="submission-author";
+      note.textContent = m.status === "revealing" ? `Revealing in sequence · ${Math.max(0, 20-Math.floor(elapsed))}s until voting` : `${entry.votes || 0} votes`;
+      card.append(note);
+    }
+    grid.append(card);
+  });
+  gameContent.append(grid);
+  const progress=document.createElement("p"); progress.className="field-note";
+  progress.textContent = m.status === "voting" ? `Matchup ${m.number} of ${state.matchups_total || "?"} · ${m.votes_cast || 0}/${m.eligible_voters || 0} eligible votes received` : `Matchup ${m.number} of ${state.matchups_total || "?"} · entries reveal one at a time`;
+  gameContent.append(progress);
+}
+
 function renderSubmissions(state, voting) {
   const submissions = state.submissions || [];
   const grid = document.createElement("div"); grid.className="submission-grid";
   submissions.forEach((sub, i) => {
     const card=document.createElement("article"); card.className="submission-card";
-    const label=document.createElement("span"); label.className="eyebrow"; label.textContent=`COMBO ${i+1}`;
+    const label=document.createElement("span"); label.className="eyebrow"; label.textContent=`ENTRY ${i+1}`;
     const img=document.createElement("img"); img.src=sub.image_url; img.alt="Submitted image"; img.loading="lazy";
-    const msg=document.createElement("p"); msg.textContent=sub.message_text;
-    const meta=document.createElement("span"); meta.className="submission-author";
-    meta.textContent = voting ? `${sub.votes || 0} votes` : `${sub.username} · ${sub.votes || 0} votes`;
-    card.append(label,img,msg,meta);
-    if (voting && !state.my_vote && sub.player_id !== currentPlayerId) {
-      const btn=document.createElement("button"); btn.className="button button-secondary"; btn.textContent="Vote for this combo";
-      btn.addEventListener("click", async ()=>{
-        btn.disabled=true;
-        const {error}=await db.rpc("mfc_vote",{target_room:currentRoomId,target_submission:sub.id});
-        if(error){gameMessage.textContent=friendlyError(error);btn.disabled=false;} else {gameMessage.textContent="Vote recorded.";await loadGameState();}
-      }); card.append(btn);
-    } else if (voting && sub.player_id === currentPlayerId) {
-      const own=document.createElement("span"); own.className="submission-author"; own.textContent="Your combo — cannot vote"; card.append(own);
-    }
-    grid.append(card);
+    const msg=document.createElement("p"); msg.textContent=`“${String(sub.message_text||"").replace(/^[“"']|[”"']$/g,"").trim()}”`;
+    const meta=document.createElement("span"); meta.className="submission-author"; meta.textContent=`${sub.username || "Player"} · ${sub.votes || 0} votes`;
+    card.append(label,img,msg,meta); grid.append(card);
   });
   gameContent.append(grid);
-  if (voting && state.my_vote) { const note=document.createElement("p"); note.className="field-note"; note.textContent="Your vote is recorded. Wait for voting to close."; gameContent.append(note); }
 }
 
 function renderScoreboard(scores) {
@@ -607,6 +654,64 @@ async function startNewGame() {
   } catch (error) { gameMessage.textContent = `Could not start a new game: ${friendlyError(error)}. Run the updated SQL migration first.`; }
   finally { startNewGameBtn.disabled = false; }
 }
+function hostFadeElement(tag, className, text) {
+  const el = document.createElement(tag); el.className = className; if (text !== undefined) el.textContent = text; return el;
+}
+function hostRenderEntry(entry, side, step, index, closed) {
+  const msgVisible = index === 0 ? step >= 0 : step >= 2;
+  const imageVisible = index === 0 ? step >= 1 : step >= 3;
+  const card = hostFadeElement("article", "host-entry");
+  card.append(hostFadeElement("div", "host-entry-label", `ENTRY ${side}`));
+  card.append(msgVisible ? hostFadeElement("p", "host-entry-message reveal-in", `“${String(entry?.message_text || "").replace(/^[“"']|[”"']$/g, "").trim()}”`) : hostFadeElement("div", "host-placeholder", "Message incoming…"));
+  if (imageVisible && entry?.image_url) { const img=document.createElement("img"); img.src=entry.image_url; img.alt=`Entry ${side}`; img.className="reveal-in"; card.append(img); }
+  else card.append(hostFadeElement("div", "host-placeholder host-image-placeholder", "Image reveal next"));
+  if (closed || step === 4) card.append(hostFadeElement("div", "host-vote-count", `${entry?.votes || 0} vote${Number(entry?.votes)===1?"":"s"}`));
+  if (closed && entry?.username) card.append(hostFadeElement("div", "host-entry-author", entry.username));
+  return card;
+}
+function renderHostState(data) {
+  const hostLobby=document.querySelector("#hostLobby"), hostGame=document.querySelector("#hostGame");
+  document.querySelector("#hostRoomCode").textContent=data.room_code || "------";
+  document.querySelector("#hostCodeLarge").textContent=data.room_code || "------";
+  const players=document.querySelector("#hostPlayers"); players.replaceChildren();
+  (data.players||[]).forEach((p,i)=>{ const item=hostFadeElement("div","host-player"); item.append(hostFadeElement("span","host-player-number",String(i+1).padStart(2,"0")),hostFadeElement("span","host-player-name",p.username),p.is_host?hostFadeElement("span","host-tag","HOST / PLAYER"):hostFadeElement("span","host-player-status","JOINED")); players.append(item); });
+  const round=data.round;
+  if (!round || data.status === "lobby") { hostLobby.classList.remove("hidden"); hostGame.classList.add("hidden"); return; }
+  hostLobby.classList.add("hidden"); hostGame.classList.remove("hidden");
+  document.querySelector("#hostRoundLabel").textContent=`ROUND ${round.number} OF ${round.rounds_total || "?"}`;
+  document.querySelector("#hostMatchupLabel").textContent=data.current_matchup ? `MATCHUP ${data.current_matchup.number} / ${data.matchups_total}` : (round.phase === "results" ? "ROUND RESULTS" : "GETTING READY");
+  const title=document.querySelector("#hostGameTitle"), subtitle=document.querySelector("#hostGameSubtitle"), board=document.querySelector("#hostMatchup"); board.replaceChildren();
+  const m=data.current_matchup;
+  if (round.phase === "results" || data.status === "finished") { title.textContent=data.status === "finished"?"GAME COMPLETE":"ROUND COMPLETE"; subtitle.textContent="Scores update as each vote is counted."; }
+  else if (!m) { title.textContent="Get ready…"; subtitle.textContent="The host is preparing the first matchup."; }
+  else {
+    const elapsed=m.reveal_started_at?Math.max(0,(Date.now()-new Date(m.reveal_started_at).getTime())/1000):0;
+    const step=m.status === "voting" ? 4 : Math.min(3,Math.floor(elapsed/5));
+    title.textContent=m.status === "voting"?"PICK THE FUNNIER ENTRY":"THE SHOWDOWN";
+    subtitle.textContent=m.status === "voting"?`${m.votes_cast || 0} of ${m.eligible_voters || 0} eligible votes received`:`Revealing the entries · ${Math.max(0,20-Math.floor(elapsed))} seconds until voting`;
+    board.className="host-matchup"; board.append(hostRenderEntry(m.a,"A",step,0,m.status==="closed"),hostRenderEntry(m.b,"B",step,1,m.status==="closed"));
+  }
+  const scores=document.querySelector("#hostScoreboard"); scores.replaceChildren(hostFadeElement("h2","","SCOREBOARD"));
+  (data.scores||[]).forEach((p,i)=>{const row=hostFadeElement("div","host-score-row");row.append(hostFadeElement("span","host-score-rank",String(i+1).padStart(2,"0")),hostFadeElement("span","host-score-name",p.username),hostFadeElement("strong","host-score-points",`${p.points} PTS`));scores.append(row);});
+}
+async function pollHostDisplay() {
+  const code = new URLSearchParams(location.search).get("host");
+  if (!code) return;
+  const { data, error } = await db.rpc("mfc_get_spectator_state", { requested_code: code });
+  if (error) { document.querySelector("#hostError").textContent = friendlyError(error); return; }
+  document.querySelector("#hostError").textContent = "";
+  const m=data.current_matchup||{}; const elapsed=m.reveal_started_at?Math.max(0,(Date.now()-new Date(m.reveal_started_at).getTime())/1000):0;
+  const signature=JSON.stringify({status:data.status,round:data.round?.number,phase:data.round?.phase,matchup:m.number,matchStatus:m.status,step:m.status==="revealing"?Math.floor(elapsed/5):4,votes:m.votes_cast,scores:data.scores,players:data.players});
+  if(signature!==hostLastSignature){hostLastSignature=signature;renderHostState(data);}
+}
+async function bootHostDisplay() {
+  const code = new URLSearchParams(location.search).get("host");
+  if (!code) return;
+  hostDisplayMode=true; homeView.classList.add("hidden"); lobbyView.classList.add("hidden"); gameView.classList.add("hidden"); hostView.classList.remove("hidden");
+  document.body.classList.add("host-display-body");
+  await pollHostDisplay(); hostPollHandle=setInterval(pollHostDisplay,2000);
+}
+
 createBtn.addEventListener("click", createRoom);
 startBtn.addEventListener("click", startGame);
 gameActionBtn.addEventListener("click", async () => {
@@ -647,6 +752,12 @@ document.querySelector("#leaveBtn").addEventListener("click", leaveRoom);
 resetSessionBtn?.addEventListener("click", clearRoomSession);
 gameLeaveBtn.addEventListener("click", leaveRoom);
 startNewGameBtn.addEventListener("click", startNewGame);
+hostDisplayBtn?.addEventListener("click", () => {
+  if (!currentRoomCode) return;
+  const url = new URL(location.href); url.searchParams.set("host", currentRoomCode);
+  window.open(url.toString(), "_blank", "noopener");
+});
+bootHostDisplay();
 
 // Always show the create/join landing screen on a fresh page load.
 // Room session details remain in sessionStorage so the UI can offer recovery later,

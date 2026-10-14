@@ -12,6 +12,7 @@ const usernameInput = document.querySelector("#username");
 const roomCodeInput = document.querySelector("#roomCode");
 const createBtn = document.querySelector("#createBtn");
 const joinBtn = document.querySelector("#joinBtn");
+const resetSessionBtn = document.querySelector("#resetSessionBtn");
 const homeMessage = document.querySelector("#homeMessage");
 const playerMessage = document.querySelector("#playerMessage");
 const roomCodeDisplay = document.querySelector("#roomCodeDisplay");
@@ -224,15 +225,13 @@ function updateScanDisplay(room, players) {
   const imageProgress = Math.min(images / 50, 1);
   const messageProgress = Math.min(messages / 200, 1);
   const percent = Math.round(((imageProgress + messageProgress) / 2) * 100);
-  const ready = room.scan_status === "ready" || (images >= 50 && messages >= 200);
-  const failed = room.scan_status === "failed";
   const isHost = players.some((p) => (p.is_host || p.id === room.host_player_id) && p.id === currentPlayerId);
-  scanProgress.style.width = `${percent}%`;
-  scanPercent.textContent = `${percent}%`;
-  scanCounts.textContent = `${Math.min(images, 50)} / 50 images · ${Math.min(messages, 200)} / 200 messages`;
-  scanTitle.textContent = ready ? "Content ready" : failed ? "Scan needs attention" : room.scan_status === "scanning" ? "Soggybot is scanning" : "Waiting for Soggybot";
-  scanDetail.textContent = ready ? "Enough content has been collected. The host can start." : failed ? (room.scan_error || "The scan could not find enough eligible content.") : "Collecting content for the game.";
-  startBtn.disabled = !(ready && isHost && room.status === "lobby");
+  scanProgress.style.width = "0%";
+  scanPercent.textContent = "On demand";
+  scanCounts.textContent = "Images and messages are gathered only after Start game is clicked.";
+  scanTitle.textContent = "Content gathered when the game starts";
+  scanDetail.textContent = "If more content is needed, Soggybot will collect it and the game will start automatically when ready.";
+  startBtn.disabled = !(isHost && room.status === "lobby");
   startBtn.textContent = isHost ? "Start game" : "Waiting for host";
   if (room.status === "playing") {
     scanTitle.textContent = "Room started";
@@ -352,7 +351,7 @@ function renderGameState(state) {
   startNewGameBtn.classList.add("hidden");
   if (phase === "selecting") {
     gameTitle.textContent = state.my_submitted ? "Combos submitted." : "Make two combos.";
-    gameInstructions.textContent = state.my_submitted ? "Your pairs are locked in. Voting starts when everyone has submitted or when the timer runs out." : "Drag each image onto the message you want to pair it with. You can also select an image, then tap a message. Submit when both pairs are ready. You have up to 60 seconds.";
+    gameInstructions.textContent = state.my_submitted ? "Your pairs are locked in. Voting starts when everyone has submitted or when the timer runs out." : "";
     if (!state.my_submitted) renderHand(state.hand || {});
     else {
       const wait = document.createElement("div"); wait.className="hand-card"; wait.textContent="Your choices are locked in. Waiting for the timer…"; gameContent.append(wait);
@@ -537,6 +536,39 @@ async function leaveRoom() {
     gameMessage.textContent = `Could not leave room: ${friendlyError(error)}. Run the updated SQL migration first.`;
   } finally { buttons.forEach(b => b.disabled = false); }
 }
+async function clearRoomSession() {
+  if (resetSessionBtn) resetSessionBtn.disabled = true;
+  setHomeMessage("Clearing saved room membership…");
+  try {
+    // Remove this authenticated browser user from every room, then clear local state.
+    const { error } = await db.rpc("mfc_leave_all_rooms");
+    if (error) throw error;
+    if (pollHandle) clearInterval(pollHandle);
+    if (gamePollHandle) clearInterval(gamePollHandle);
+    pollHandle = null;
+    gamePollHandle = null;
+    gameState = null;
+    currentRoom = null;
+    currentPlayers = [];
+    renderedGameSignature = "";
+    selectedMessages = ["", ""];
+    activeImageIndex = null;
+    votedSubmission = null;
+    currentRoomId = null;
+    currentPlayerId = null;
+    currentRoomCode = null;
+    ["mfc_room_id", "mfc_room_code", "mfc_player_id", "mfc_username"].forEach(k => sessionStorage.removeItem(k));
+    gameView.classList.add("hidden");
+    lobbyView.classList.add("hidden");
+    homeView.classList.remove("hidden");
+    setHomeMessage("Room session cleared. You can create or join a room now.");
+  } catch (error) {
+    setHomeMessage(`Could not clear the room session: ${friendlyError(error)}. Make sure the updated SQL migration has been run.`);
+  } finally {
+    if (resetSessionBtn) resetSessionBtn.disabled = false;
+  }
+}
+
 async function startNewGame() {
   if (!currentRoomId || !gameState?.is_host) return;
   startNewGameBtn.disabled = true;
@@ -588,6 +620,7 @@ document.querySelector("#copyCodeBtn").addEventListener("click", async () => {
   }
 });
 document.querySelector("#leaveBtn").addEventListener("click", leaveRoom);
+resetSessionBtn?.addEventListener("click", clearRoomSession);
 gameLeaveBtn.addEventListener("click", leaveRoom);
 startNewGameBtn.addEventListener("click", startNewGame);
 

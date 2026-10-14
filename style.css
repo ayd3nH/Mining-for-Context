@@ -169,3 +169,15 @@ footer span:last-child { letter-spacing: 0; text-align: right; }
 .message-drag-hint { flex-shrink:0; color:var(--muted); font-size:11px; }
 .game-top-actions { display:flex; align-items:center; gap:16px; }
 @media(max-width:560px) { .pairing-board-stacked .pairing-image-grid { grid-template-columns:1fr 1fr; gap:8px; } .pairing-board-stacked .pairing-image-card { padding:8px; } .pairing-board-stacked .pairing-image-card img { height:170px; } .game-top-actions { gap:8px; } }
+
+
+.session-reset-row {
+  margin-top: 1rem;
+  padding-top: .85rem;
+  border-top: 1px solid rgba(40, 36, 30, .12);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .35rem;
+}
+.session-reset-row .field-note { margin: 0; }

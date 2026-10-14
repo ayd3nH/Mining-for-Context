@@ -270,12 +270,12 @@ async function startGame() {
   };
   let requestPoll = null;
   try {
-    startMessage.textContent = "Checking how much unused content this game needs…";
+    startMessage.textContent = "Checking the content library for this game…";
     const { data: request, error: requestError } = await db.rpc("mfc_request_content_for_game", settings);
     if (requestError) throw requestError;
     if (!request?.request_id) throw new Error("Supabase did not return a content request ID. Run upgrade_content_on_demand.sql first.");
     if (request.status !== "ready") {
-      startMessage.textContent = "Gathering more content from Discord… Keep Soggybot online; this may take a while.";
+      startMessage.textContent = "The library is short. Gathering additional content from Discord… Keep Soggybot online; this may take a while.";
       requestPoll = setInterval(async () => {
         try {
           const { data, error } = await db.from("mfc_content_requests")
@@ -292,8 +292,8 @@ async function startGame() {
             startBtn.disabled = false;
           } else {
             startMessage.textContent = data.status === "scanning"
-              ? "Gathering more content from Discord… Soggybot is scanning accessible channel history."
-              : "Gathering more content from Discord… Waiting for Soggybot.";
+              ? "The library is short. Soggybot is scanning accessible Discord history for the missing content."
+              : "The library is short. Waiting for Soggybot to gather the missing content.";
           }
         } catch (pollError) {
           if (requestPoll) clearInterval(requestPoll);

@@ -98,3 +98,34 @@ footer span:last-child { letter-spacing: 0; text-align: right; }
 .progress-fill { width: 0%; height: 100%; border-radius: inherit; background: var(--accent); transition: width .35s ease; }
 .start-button { width: 100%; margin-top: 12px; }
 .start-button:disabled { cursor: not-allowed; opacity: .45; }
+
+.host-settings { margin-top: 18px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fbfaf6; display: grid; gap: 8px; }
+.host-settings label { margin: 4px 0 0; }
+.host-settings select, .game-content select { width: 100%; border: 1px solid #d8d8ce; background: #fff; border-radius: 7px; padding: 10px 11px; color: var(--ink); font: inherit; font-size: 12px; }
+.settings-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.game-view { padding: 44px 0 54px; max-width: 900px; margin: 0 auto; width: 100%; }
+.game-topline { display:flex; justify-content:space-between; align-items:center; }
+.game-topline .eyebrow { margin:0; }
+.game-timer { font-size:20px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--accent); }
+.game-title { font-size: clamp(36px,5vw,52px); letter-spacing:-2px; margin-top:18px; }
+.game-content { margin-top:24px; display:grid; gap:14px; }
+.hand-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.hand-card, .submission-card, .scoreboard { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; min-width:0; }
+.hand-card img, .submission-card img { width:100%; max-height:310px; object-fit:contain; border-radius:7px; background:#f0eee8; }
+.hand-card h3, .submission-card h3 { font-size:14px; margin:0 0 12px; }
+.hand-card select { margin-top:12px; }
+.message-list { display:grid; gap:8px; }
+.message-option { display:flex; align-items:flex-start; gap:9px; background:#fbfaf6; border:1px solid var(--line); border-radius:8px; padding:11px; font-size:13px; line-height:1.45; }
+.submission-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.submission-card { display:flex; flex-direction:column; gap:10px; }
+.submission-card p { font-size:13px; line-height:1.5; margin:0; }
+.submission-card .button { margin-top:auto; }
+.submission-author { color:var(--muted); font-size:11px; }
+.game-actions { display:flex; gap:10px; margin-top:18px; }
+.game-actions .button { min-width:160px; }
+.scoreboard { margin-top:18px; }
+.scoreboard h2 { font-size:16px; margin:0 0 10px; }
+.score-row { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-top:1px solid #eeede7; font-size:13px; }
+.score-row:first-of-type { border-top:0; }
+.winner-label { color:var(--accent); font-weight:800; }
+@media(max-width:650px) { .hand-grid,.submission-grid { grid-template-columns:1fr; } .game-view { padding-top:32px; } .game-actions { flex-direction:column; } .game-actions .button { width:100%; } }

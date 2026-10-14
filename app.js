@@ -25,6 +25,21 @@ const scanCounts = document.querySelector("#scanCounts");
 const scanDetail = document.querySelector("#scanDetail");
 const startBtn = document.querySelector("#startBtn");
 const startMessage = document.querySelector("#startMessage");
+const hostSettings = document.querySelector("#hostSettings");
+const roundsSetting = document.querySelector("#roundsSetting");
+const modeSetting = document.querySelector("#modeSetting");
+const pickTimeSetting = document.querySelector("#pickTimeSetting");
+const voteTimeSetting = document.querySelector("#voteTimeSetting");
+const gameView = document.querySelector("#gameView");
+const gameRoundLabel = document.querySelector("#gameRoundLabel");
+const gameTimer = document.querySelector("#gameTimer");
+const gameTitle = document.querySelector("#gameTitle");
+const gameInstructions = document.querySelector("#gameInstructions");
+const gameContent = document.querySelector("#gameContent");
+const gameMessage = document.querySelector("#gameMessage");
+const gameActionBtn = document.querySelector("#gameActionBtn");
+const gameNextBtn = document.querySelector("#gameNextBtn");
+const scoreboard = document.querySelector("#scoreboard");
 
 let currentRoomId = null;
 let currentPlayerId = null;
@@ -33,6 +48,11 @@ let pollHandle = null;
 let busy = false;
 let currentRoom = null;
 let currentPlayers = [];
+let gamePollHandle = null;
+let gameState = null;
+let renderedGameSignature = "";
+let selectedMessages = ["", ""];
+let votedSubmission = null;
 
 function setHomeMessage(message = "") {
   homeMessage.textContent = message;
@@ -160,6 +180,17 @@ async function refreshLobby() {
   currentPlayers = players;
   updateScanDisplay(room, players);
   playerCount.textContent = String(players.length);
+  if (room.status === "playing" || room.status === "finished") {
+    homeView.classList.add("hidden");
+    lobbyView.classList.add("hidden");
+    gameView.classList.remove("hidden");
+    hostSettings.classList.add("hidden");
+    startBtn.classList.add("hidden");
+    if (!gamePollHandle) {
+      loadGameState();
+      gamePollHandle = setInterval(loadGameState, 1500);
+    }
+  }
   lobbyStatus.textContent = room.status === "lobby" ? "Waiting for players" :
     room.status === "playing" ? "Game in progress" : "Game finished";
   playerList.replaceChildren();
@@ -210,11 +241,17 @@ function updateScanDisplay(room, players) {
 async function startGame() {
   if (!currentRoom || startBtn.disabled) return;
   startBtn.disabled = true;
-  startMessage.textContent = "Starting room…";
+  startMessage.textContent = "Starting game…";
   try {
-    const { error } = await db.rpc("start_game_room", { target_room_id: currentRoomId });
+    const { error } = await db.rpc("mfc_start_game", {
+      target_room: currentRoomId,
+      rounds_total: Number(roundsSetting.value),
+      selection_seconds: Number(pickTimeSetting.value),
+      voting_seconds: Number(voteTimeSetting.value),
+      game_mode: modeSetting.value
+    });
     if (error) throw error;
-    startMessage.textContent = "Room started.";
+    startMessage.textContent = "Game started.";
     await refreshLobby();
   } catch (error) {
     startMessage.textContent = friendlyError(error);
@@ -222,9 +259,153 @@ async function startGame() {
   }
 }
 
+async function loadGameState() {
+  if (!currentRoomId || gameView.classList.contains("hidden")) return;
+  const { data, error } = await db.rpc("mfc_get_game_state", { target_room: currentRoomId });
+  if (error) {
+    gameMessage.textContent = friendlyError(error);
+    return;
+  }
+  gameState = data;
+  const round = data.round || {};
+  const signature = JSON.stringify({status:data.status, phase:round.phase, id:round.id, submitted:data.my_submitted,
+    submissions:(data.submissions||[]).map(s=>[s.id,s.votes]), my_vote:data.my_vote, scores:data.scores});
+  if (signature !== renderedGameSignature) {
+    renderedGameSignature = signature;
+    renderGameState(data);
+  }
+  const deadline = round.phase === "selecting" ? round.selection_deadline : round.phase === "voting" ? round.voting_deadline : null;
+  if (deadline) {
+    const seconds = Math.max(0, Math.ceil((new Date(deadline).getTime() - Date.now()) / 1000));
+    gameTimer.textContent = `00:${String(seconds).padStart(2,"0")}`;
+  } else gameTimer.textContent = "";
+}
+
+function renderGameState(state) {
+  const round = state.round || {};
+  const phase = round.phase || "waiting";
+  gameRoundLabel.textContent = state.status === "finished" ? "GAME COMPLETE" : `ROUND ${round.number || 1} OF ${state.rounds_total || 5}`;
+  gameMessage.textContent = "";
+  gameNextBtn.classList.add("hidden");
+  gameActionBtn.classList.remove("hidden");
+  gameContent.replaceChildren();
+  scoreboard.replaceChildren();
+  renderScoreboard(state.scores || []);
+
+  if (state.status === "finished" || phase === "finished") {
+    gameTitle.textContent = "Final results.";
+    gameInstructions.textContent = "The game is over. Here's how everyone finished.";
+    gameActionBtn.classList.add("hidden");
+    return;
+  }
+  if (phase === "selecting") {
+    gameTitle.textContent = state.my_submitted ? "Combos submitted." : "Make two combos.";
+    gameInstructions.textContent = state.my_submitted ? "Waiting for the 15-second matching phase to end. The reveal comes next." : "Match each of your two images with a different message. You have five messages and two combos to make.";
+    if (!state.my_submitted) renderHand(state.hand || {});
+    else {
+      const wait = document.createElement("div"); wait.className="hand-card"; wait.textContent="Your choices are locked in. Waiting for the timer…"; gameContent.append(wait);
+      gameActionBtn.classList.add("hidden");
+    }
+    gameActionBtn.textContent = "Submit two combos";
+    gameActionBtn.disabled = !!state.my_submitted;
+    return;
+  }
+  if (phase === "voting") {
+    gameTitle.textContent = "Pick the funniest.";
+    gameInstructions.textContent = "Vote for one combo. You cannot vote for your own submission.";
+    renderSubmissions(state, true);
+    gameActionBtn.classList.add("hidden");
+    return;
+  }
+  if (phase === "results") {
+    gameTitle.textContent = "Round results.";
+    gameInstructions.textContent = "The most-voted combo earns 3 points; the runner-up earns 1.";
+    renderSubmissions(state, false);
+    gameActionBtn.classList.add("hidden");
+    if (state.is_host) {
+      gameNextBtn.textContent = round.number >= state.rounds_total ? "Show final results" : "Start next round";
+      gameNextBtn.classList.remove("hidden");
+    }
+    return;
+  }
+  gameTitle.textContent = "Getting the round ready…";
+  gameInstructions.textContent = "Waiting for game data.";
+  gameActionBtn.classList.add("hidden");
+}
+
+function renderHand(hand) {
+  const images = hand.images || [];
+  const messages = hand.messages || [];
+  const grid = document.createElement("div"); grid.className = "hand-grid";
+  images.slice(0,2).forEach((img, index) => {
+    const card = document.createElement("article"); card.className="hand-card";
+    const title = document.createElement("h3"); title.textContent = `Image ${index+1}`;
+    const image = document.createElement("img"); image.src=img.url; image.alt=`Your image ${index+1}`; image.loading="lazy";
+    const label = document.createElement("label"); label.textContent="Match with a message"; label.htmlFor=`messageChoice${index}`;
+    const select = document.createElement("select"); select.id=`messageChoice${index}`;
+    const blank = document.createElement("option"); blank.value=""; blank.textContent="Choose a message…"; select.append(blank);
+    messages.forEach((msg, mi) => { const option=document.createElement("option"); option.value=msg.id; option.textContent=`${mi+1}. ${msg.text}`; select.append(option); });
+    select.value=selectedMessages[index] || "";
+    select.addEventListener("change", () => { selectedMessages[index]=select.value; });
+    card.append(title,image,label,select); grid.append(card);
+  });
+  gameContent.append(grid);
+  const list = document.createElement("div"); list.className="hand-card";
+  const h = document.createElement("h3"); h.textContent="Your five messages"; list.append(h);
+  const messagesList = document.createElement("div"); messagesList.className="message-list";
+  messages.forEach((msg,i)=>{ const item=document.createElement("div"); item.className="message-option"; item.textContent=`${i+1}. ${msg.text}`; messagesList.append(item); });
+  list.append(messagesList); gameContent.append(list);
+}
+
+function renderSubmissions(state, voting) {
+  const submissions = state.submissions || [];
+  const grid = document.createElement("div"); grid.className="submission-grid";
+  submissions.forEach((sub, i) => {
+    const card=document.createElement("article"); card.className="submission-card";
+    const label=document.createElement("span"); label.className="eyebrow"; label.textContent=`COMBO ${i+1}`;
+    const img=document.createElement("img"); img.src=sub.image_url; img.alt="Submitted image"; img.loading="lazy";
+    const msg=document.createElement("p"); msg.textContent=sub.message_text;
+    const meta=document.createElement("span"); meta.className="submission-author";
+    meta.textContent = voting ? `${sub.votes || 0} votes` : `${sub.username} · ${sub.votes || 0} votes`;
+    card.append(label,img,msg,meta);
+    if (voting && !state.my_vote && sub.player_id !== currentPlayerId) {
+      const btn=document.createElement("button"); btn.className="button button-secondary"; btn.textContent="Vote for this combo";
+      btn.addEventListener("click", async ()=>{
+        btn.disabled=true;
+        const {error}=await db.rpc("mfc_vote",{target_room:currentRoomId,target_submission:sub.id});
+        if(error){gameMessage.textContent=friendlyError(error);btn.disabled=false;} else {gameMessage.textContent="Vote recorded.";await loadGameState();}
+      }); card.append(btn);
+    } else if (voting && sub.player_id === currentPlayerId) {
+      const own=document.createElement("span"); own.className="submission-author"; own.textContent="Your combo — cannot vote"; card.append(own);
+    }
+    grid.append(card);
+  });
+  gameContent.append(grid);
+  if (voting && state.my_vote) { const note=document.createElement("p"); note.className="field-note"; note.textContent="Your vote is recorded. Wait for voting to close."; gameContent.append(note); }
+}
+
+function renderScoreboard(scores) {
+  if (!scores.length) return;
+  const heading=document.createElement("h2"); heading.textContent="Leaderboard"; scoreboard.append(heading);
+  scores.forEach((player,index)=>{ const row=document.createElement("div"); row.className="score-row"; const name=document.createElement("span"); name.textContent=`${index+1}. ${player.username}`; if(index===0 && Number(player.points)>0) name.className="winner-label"; const pts=document.createElement("strong"); pts.textContent=`${player.points} pts`; row.append(name,pts); scoreboard.append(row); });
+}
+
+async function nextRound() {
+  gameNextBtn.disabled=true;
+  const {error}=await db.rpc("mfc_next_round",{target_room:currentRoomId});
+  if(error) gameMessage.textContent=friendlyError(error);
+  renderedGameSignature="";
+  gameNextBtn.disabled=false;
+  await loadGameState();
+}
+
 async function leaveRoom() {
   if (pollHandle) clearInterval(pollHandle);
+  if (gamePollHandle) clearInterval(gamePollHandle);
   pollHandle = null;
+  gamePollHandle = null;
+  gameState = null;
+  renderedGameSignature = "";
   currentRoomId = null;
   currentPlayerId = null;
   currentRoomCode = null;
@@ -239,6 +420,21 @@ async function leaveRoom() {
 }
 createBtn.addEventListener("click", createRoom);
 startBtn.addEventListener("click", startGame);
+gameActionBtn.addEventListener("click", async () => {
+  if (!gameState || !gameState.hand) return;
+  const [imageA,imageB] = gameState.hand.images || [];
+  if (!imageA || !imageB) { gameMessage.textContent="This hand is missing images. Please ask the host to restart the round."; return; }
+  if (!selectedMessages[0] || !selectedMessages[1]) { gameMessage.textContent="Choose a message for both images."; return; }
+  if (selectedMessages[0] === selectedMessages[1]) { gameMessage.textContent="Choose two different messages."; return; }
+  gameActionBtn.disabled=true;
+  const pairs=[{image_id:imageA.id,message_id:selectedMessages[0]},{image_id:imageB.id,message_id:selectedMessages[1]}];
+  const {error}=await db.rpc("mfc_submit_combos",{target_room:currentRoomId,pairs});
+  if(error){gameMessage.textContent=friendlyError(error);gameActionBtn.disabled=false;return;}
+  selectedMessages=["",""];
+  renderedGameSignature="";
+  await loadGameState();
+});
+gameNextBtn.addEventListener("click", nextRound);
 joinBtn.addEventListener("click", joinRoom);
 roomCodeInput.addEventListener("input", () => {
   roomCodeInput.value = roomCodeInput.value.toUpperCase().replace(/[^A-F0-9]/g, "").slice(0, 6);

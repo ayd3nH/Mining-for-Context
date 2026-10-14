@@ -12,7 +12,6 @@ const usernameInput = document.querySelector("#username");
 const roomCodeInput = document.querySelector("#roomCode");
 const createBtn = document.querySelector("#createBtn");
 const joinBtn = document.querySelector("#joinBtn");
-const resetSessionBtn = document.querySelector("#resetSessionBtn");
 const homeMessage = document.querySelector("#homeMessage");
 const playerMessage = document.querySelector("#playerMessage");
 const roomCodeDisplay = document.querySelector("#roomCodeDisplay");
@@ -245,15 +244,61 @@ function updateScanDisplay(room, players) {
 async function startGame() {
   if (!currentRoom || startBtn.disabled) return;
   startBtn.disabled = true;
-  startMessage.textContent = "Starting game…";
+  const settings = {
+    target_room: currentRoomId,
+    rounds_total: Number(roundsSetting.value),
+    selection_seconds: Number(pickTimeSetting.value),
+    voting_seconds: Number(voteTimeSetting.value),
+    game_mode: modeSetting.value
+  };
+  let requestPoll = null;
   try {
-    const { error } = await db.rpc("mfc_start_game", {
-      target_room: currentRoomId,
-      rounds_total: Number(roundsSetting.value),
-      selection_seconds: Number(pickTimeSetting.value),
-      voting_seconds: Number(voteTimeSetting.value),
-      game_mode: modeSetting.value
-    });
+    startMessage.textContent = "Checking how much unused content this game needs…";
+    const { data: request, error: requestError } = await db.rpc("mfc_request_content_for_game", settings);
+    if (requestError) throw requestError;
+    if (!request?.request_id) throw new Error("Supabase did not return a content request ID. Run upgrade_content_on_demand.sql first.");
+    if (request.status !== "ready") {
+      startMessage.textContent = "Gathering more content from Discord… Keep Soggybot online; this may take a while.";
+      requestPoll = setInterval(async () => {
+        try {
+          const { data, error } = await db.from("mfc_content_requests")
+            .select("status,error").eq("id", request.request_id).single();
+          if (error) throw error;
+          if (data.status === "ready") {
+            clearInterval(requestPoll);
+            requestPoll = null;
+            await launchRequestedGame(settings);
+          } else if (data.status === "failed") {
+            clearInterval(requestPoll);
+            requestPoll = null;
+            startMessage.textContent = data.error || "Soggybot could not find enough eligible Discord content.";
+            startBtn.disabled = false;
+          } else {
+            startMessage.textContent = data.status === "scanning"
+              ? "Gathering more content from Discord… Soggybot is scanning accessible channel history."
+              : "Gathering more content from Discord… Waiting for Soggybot.";
+          }
+        } catch (pollError) {
+          if (requestPoll) clearInterval(requestPoll);
+          requestPoll = null;
+          startMessage.textContent = friendlyError(pollError);
+          startBtn.disabled = false;
+        }
+      }, 2500);
+      return;
+    }
+    await launchRequestedGame(settings);
+  } catch (error) {
+    if (requestPoll) clearInterval(requestPoll);
+    startMessage.textContent = friendlyError(error);
+    startBtn.disabled = false;
+  }
+}
+
+async function launchRequestedGame(settings) {
+  try {
+    startMessage.textContent = "Content is ready. Starting game…";
+    const { error } = await db.rpc("mfc_start_game", settings);
     if (error) throw error;
     startMessage.textContent = "Game started.";
     await refreshLobby();
@@ -492,24 +537,6 @@ async function leaveRoom() {
     gameMessage.textContent = `Could not leave room: ${friendlyError(error)}. Run the updated SQL migration first.`;
   } finally { buttons.forEach(b => b.disabled = false); }
 }
-async function clearRoomSession() {
-  if (resetSessionBtn) resetSessionBtn.disabled = true;
-  try {
-    const { error } = await db.rpc("mfc_leave_all_rooms");
-    if (error) throw error;
-    if (pollHandle) clearInterval(pollHandle);
-    if (gamePollHandle) clearInterval(gamePollHandle);
-    pollHandle = null; gamePollHandle = null; gameState = null; currentRoom = null; currentPlayers = [];
-    renderedGameSignature = ""; selectedMessages = ["", ""]; activeImageIndex = null; votedSubmission = null;
-    currentRoomId = null; currentPlayerId = null; currentRoomCode = null;
-    ["mfc_room_id", "mfc_room_code", "mfc_player_id", "mfc_username"].forEach(k => sessionStorage.removeItem(k));
-    gameView.classList.add("hidden"); lobbyView.classList.add("hidden"); homeView.classList.remove("hidden");
-    setHomeMessage("Room session cleared. You can create or join a room now.");
-  } catch (error) {
-    setHomeMessage(`Could not clear the room session: ${friendlyError(error)}. Run the updated SQL migration first.`);
-  } finally { if (resetSessionBtn) resetSessionBtn.disabled = false; }
-}
-
 async function startNewGame() {
   if (!currentRoomId || !gameState?.is_host) return;
   startNewGameBtn.disabled = true;
@@ -561,7 +588,6 @@ document.querySelector("#copyCodeBtn").addEventListener("click", async () => {
   }
 });
 document.querySelector("#leaveBtn").addEventListener("click", leaveRoom);
-resetSessionBtn?.addEventListener("click", clearRoomSession);
 gameLeaveBtn.addEventListener("click", leaveRoom);
 startNewGameBtn.addEventListener("click", startNewGame);
 

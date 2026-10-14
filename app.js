@@ -18,12 +18,21 @@ const roomCodeDisplay = document.querySelector("#roomCodeDisplay");
 const playerList = document.querySelector("#playerList");
 const playerCount = document.querySelector("#playerCount");
 const lobbyStatus = document.querySelector("#lobbyStatus");
+const scanTitle = document.querySelector("#scanTitle");
+const scanPercent = document.querySelector("#scanPercent");
+const scanProgress = document.querySelector("#scanProgress");
+const scanCounts = document.querySelector("#scanCounts");
+const scanDetail = document.querySelector("#scanDetail");
+const startBtn = document.querySelector("#startBtn");
+const startMessage = document.querySelector("#startMessage");
 
 let currentRoomId = null;
 let currentPlayerId = null;
 let currentRoomCode = null;
 let pollHandle = null;
 let busy = false;
+let currentRoom = null;
+let currentPlayers = [];
 
 function setHomeMessage(message = "") {
   homeMessage.textContent = message;
@@ -126,7 +135,7 @@ async function refreshLobby() {
   if (!currentRoomId) return;
   const { data: room, error: roomError } = await db
     .from("game_rooms")
-    .select("id, code, status, host_player_id")
+    .select("id, code, status, host_player_id, scan_status, scan_images, scan_messages, scan_error")
     .eq("id", currentRoomId)
     .maybeSingle();
   if (roomError) {
@@ -147,6 +156,9 @@ async function refreshLobby() {
     return;
   }
   setPlayerMessage("");
+  currentRoom = room;
+  currentPlayers = players;
+  updateScanDisplay(room, players);
   playerCount.textContent = String(players.length);
   lobbyStatus.textContent = room.status === "lobby" ? "Waiting for players" :
     room.status === "playing" ? "Game in progress" : "Game finished";
@@ -171,6 +183,45 @@ async function refreshLobby() {
     playerList.append(li);
   });
 }
+
+function updateScanDisplay(room, players) {
+  const images = Math.max(0, Number(room.scan_images) || 0);
+  const messages = Math.max(0, Number(room.scan_messages) || 0);
+  const imageProgress = Math.min(images / 50, 1);
+  const messageProgress = Math.min(messages / 200, 1);
+  const percent = Math.round(((imageProgress + messageProgress) / 2) * 100);
+  const ready = room.scan_status === "ready" || (images >= 50 && messages >= 200);
+  const failed = room.scan_status === "failed";
+  const isHost = players.some((p) => (p.is_host || p.id === room.host_player_id) && p.id === currentPlayerId);
+  scanProgress.style.width = `${percent}%`;
+  scanPercent.textContent = `${percent}%`;
+  scanCounts.textContent = `${Math.min(images, 50)} / 50 images · ${Math.min(messages, 200)} / 200 messages`;
+  scanTitle.textContent = ready ? "Content ready" : failed ? "Scan needs attention" : room.scan_status === "scanning" ? "Soggybot is scanning" : "Waiting for Soggybot";
+  scanDetail.textContent = ready ? "Enough content has been collected. The host can start." : failed ? (room.scan_error || "The scan could not find enough eligible content.") : "Progress reflects the content needed to start, not the entire server archive.";
+  startBtn.disabled = !(ready && isHost && room.status === "lobby");
+  startBtn.textContent = isHost ? "Start game" : "Waiting for host";
+  if (room.status === "playing") {
+    scanTitle.textContent = "Room started";
+    scanDetail.textContent = "The room is marked as started. The round and voting interface is the next game feature to build.";
+    startBtn.disabled = true;
+  }
+}
+
+async function startGame() {
+  if (!currentRoom || startBtn.disabled) return;
+  startBtn.disabled = true;
+  startMessage.textContent = "Starting room…";
+  try {
+    const { error } = await db.rpc("start_game_room", { target_room_id: currentRoomId });
+    if (error) throw error;
+    startMessage.textContent = "Room started.";
+    await refreshLobby();
+  } catch (error) {
+    startMessage.textContent = friendlyError(error);
+    startBtn.disabled = false;
+  }
+}
+
 async function leaveRoom() {
   if (pollHandle) clearInterval(pollHandle);
   pollHandle = null;
@@ -187,6 +238,7 @@ async function leaveRoom() {
   setHomeMessage("You left the lobby view. Your player entry remains until room cleanup is added.");
 }
 createBtn.addEventListener("click", createRoom);
+startBtn.addEventListener("click", startGame);
 joinBtn.addEventListener("click", joinRoom);
 roomCodeInput.addEventListener("input", () => {
   roomCodeInput.value = roomCodeInput.value.toUpperCase().replace(/[^A-F0-9]/g, "").slice(0, 6);

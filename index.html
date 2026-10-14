@@ -56,7 +56,14 @@
           </div>
           <div class="rule"></div>
           <div class="lobby-status"><span class="pulse"></span><span id="lobbyStatus">Waiting for players</span></div>
-          <p class="field-note">The game will start once the host is ready.</p>
+          <div class="scan-panel" aria-live="polite">
+            <div class="scan-heading"><strong id="scanTitle">Waiting for Soggybot</strong><span id="scanPercent">0%</span></div>
+            <div class="progress-track"><div id="scanProgress" class="progress-fill"></div></div>
+            <p id="scanCounts" class="field-note">0 / 50 images · 0 / 200 messages</p>
+            <p id="scanDetail" class="field-note">The host can start once enough content is collected.</p>
+          </div>
+          <button id="startBtn" class="button button-primary start-button" disabled>Start game</button>
+          <p id="startMessage" class="message" role="status"></p>
         </div>
         <div class="players-card">
           <div class="players-header">

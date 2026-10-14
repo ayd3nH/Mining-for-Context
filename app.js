@@ -399,8 +399,10 @@ function renderGameState(state) {
   }
   if (phase === "results") {
     gameTitle.textContent = "Round results.";
-    gameInstructions.textContent = "Each vote earns the entry's owner 2 points. Every voter earns 1 point, and a unanimous matchup earns the winning entry an extra point.";
-    renderSubmissions(state, false);
+    gameInstructions.textContent = "Watch the shared Host Mode screen for the reveals and scoreboard. Your device stays on voting controls and scores only.";
+    const wait = document.createElement("div"); wait.className = "hand-card";
+    wait.textContent = "Round complete. The shared Host Mode screen shows the results and scoreboard.";
+    gameContent.append(wait);
     gameActionBtn.classList.add("hidden");
     if (state.is_host) {
       gameNextBtn.textContent = round.number >= state.rounds_total ? "Show final results" : "Start next round";
@@ -506,50 +508,73 @@ function assignMessage(imageIndex, messageId, hand) {
 
 function renderHeadToHead(state) {
   const m = state.current_matchup;
+  const wait = document.createElement("div");
+  wait.className = "hand-card host-screen-only-notice";
   if (!m) {
-    const wait = document.createElement("div"); wait.className = "hand-card";
-    wait.textContent = "Preparing fair head-to-head matchups…"; gameContent.append(wait); return;
+    wait.textContent = "Preparing the next matchup. Watch the shared Host Mode screen.";
+    gameContent.append(wait);
+    return;
   }
-  const elapsed = m.reveal_started_at ? Math.max(0, (Date.now() - new Date(m.reveal_started_at).getTime()) / 1000) : 0;
-  const step = m.status === "voting" ? 4 : Math.min(3, Math.floor(elapsed / 5));
-  const grid = document.createElement("div"); grid.className = "head-to-head-grid";
-  [m.a, m.b].forEach((entry, index) => {
-    const side = index === 0 ? "A" : "B";
-    const msgVisible = index === 0 ? step >= 0 : step >= 2;
-    const imageVisible = index === 0 ? step >= 1 : step >= 3;
-    const card = document.createElement("article"); card.className = "submission-card head-to-head-card";
-    const label = document.createElement("span"); label.className = "eyebrow"; label.textContent = `ENTRY ${side}`; card.append(label);
-    if (msgVisible) {
-      const msg = document.createElement("p"); msg.className = "reveal-in head-to-head-message";
-      msg.textContent = `“${String(entry.message_text || "").replace(/^[“"']|[”"']$/g, "").trim()}”`; card.append(msg);
-    } else { const waiting = document.createElement("div"); waiting.className = "reveal-placeholder"; waiting.textContent = "Message incoming…"; card.append(waiting); }
-    if (imageVisible) {
-      const img = document.createElement("img"); img.className = "reveal-in"; img.src = entry.image_url; img.alt = `Entry ${side} image`; card.append(img);
-    } else { const waiting = document.createElement("div"); waiting.className = "reveal-placeholder image-placeholder"; waiting.textContent = "Image reveal next"; card.append(waiting); }
-    if (m.status === "voting") {
-      const ownEntry = entry.player_id === currentPlayerId;
-      const alreadyVoted = !!m.my_vote;
-      const btn = document.createElement("button"); btn.className = "button button-primary";
-      btn.textContent = m.my_vote === entry.id ? `Your vote: ${side}` : `Vote for ${side}`;
-      btn.disabled = ownEntry || alreadyVoted;
+
+  // The matchup content is shown only on the spectator Host Mode display.
+  // Player phones receive only side labels and vote controls, never the pair.
+  if (m.status !== "voting") {
+    gameTitle.textContent = "Watch the big screen…";
+    wait.textContent = "Watch the shared screen for the reveal. Voting buttons will appear here when the reveal is complete.";
+    gameContent.append(wait);
+    const progress = document.createElement("p");
+    progress.className = "field-note";
+    progress.textContent = `Matchup ${m.number} of ${state.matchups_total || "?"} · reveal in progress`;
+    gameContent.append(progress);
+    return;
+  }
+
+  gameTitle.textContent = "Choose the funnier entry";
+  gameInstructions.textContent = "Look at the shared screen and select A or B. The entries themselves are shown only on the host display.";
+
+  const ownEntry = m.a.player_id === currentPlayerId || m.b.player_id === currentPlayerId;
+  if (ownEntry) {
+    const notice = document.createElement("div");
+    notice.className = "hand-card host-screen-only-notice";
+    notice.textContent = "Your entry is in this matchup, so you cannot vote. Watch the shared screen.";
+    gameContent.append(notice);
+  } else {
+    const grid = document.createElement("div");
+    grid.className = "head-to-head-grid vote-choice-grid";
+    [
+      { side: "A", entry: m.a },
+      { side: "B", entry: m.b }
+    ].forEach(({ side, entry }) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "button button-primary vote-side-button";
+      btn.textContent = m.my_vote === entry.id ? `✓ ${side} selected` : side;
+      btn.setAttribute("aria-label", `Vote for entry ${side}`);
+      btn.disabled = !!m.my_vote;
       btn.addEventListener("click", async () => {
         btn.disabled = true;
-        const { error } = await db.rpc("mfc_vote_matchup", { target_room: currentRoomId, target_matchup: m.id, target_submission: entry.id });
-        if (error) { gameMessage.textContent = friendlyError(error); btn.disabled = false; }
-        else { gameMessage.textContent = "Vote recorded. You earn 1 point for voting."; renderedGameSignature = ""; await loadGameState(); }
+        const { error } = await db.rpc("mfc_vote_matchup", {
+          target_room: currentRoomId,
+          target_matchup: m.id,
+          target_submission: entry.id
+        });
+        if (error) {
+          gameMessage.textContent = friendlyError(error);
+          btn.disabled = false;
+        } else {
+          gameMessage.textContent = `Vote recorded for ${side}. You earn 1 point for voting.`;
+          renderedGameSignature = "";
+          await loadGameState();
+        }
       });
-      card.append(btn);
-      if (ownEntry) { const note=document.createElement("span"); note.className="submission-author"; note.textContent="Your entry — you cannot vote in this matchup."; card.append(note); }
-    } else {
-      const note=document.createElement("span"); note.className="submission-author";
-      note.textContent = m.status === "revealing" ? `Revealing in sequence · ${Math.max(0, 20-Math.floor(elapsed))}s until voting` : `${entry.votes || 0} votes`;
-      card.append(note);
-    }
-    grid.append(card);
-  });
-  gameContent.append(grid);
-  const progress=document.createElement("p"); progress.className="field-note";
-  progress.textContent = m.status === "voting" ? `Matchup ${m.number} of ${state.matchups_total || "?"} · ${m.votes_cast || 0}/${m.eligible_voters || 0} eligible votes received` : `Matchup ${m.number} of ${state.matchups_total || "?"} · entries reveal one at a time`;
+      grid.append(btn);
+    });
+    gameContent.append(grid);
+  }
+
+  const progress = document.createElement("p");
+  progress.className = "field-note vote-progress-note";
+  progress.textContent = `Matchup ${m.number} of ${state.matchups_total || "?"} · ${m.votes_cast || 0}/${m.eligible_voters || 0} votes received`;
   gameContent.append(progress);
 }
 

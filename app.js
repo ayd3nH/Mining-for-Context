@@ -39,6 +39,8 @@ const gameContent = document.querySelector("#gameContent");
 const gameMessage = document.querySelector("#gameMessage");
 const gameActionBtn = document.querySelector("#gameActionBtn");
 const gameNextBtn = document.querySelector("#gameNextBtn");
+const gameLeaveBtn = document.querySelector("#gameLeaveBtn");
+const startNewGameBtn = document.querySelector("#startNewGameBtn");
 const scoreboard = document.querySelector("#scoreboard");
 
 let currentRoomId = null;
@@ -225,7 +227,6 @@ function updateScanDisplay(room, players) {
   const ready = room.scan_status === "ready" || (images >= 50 && messages >= 200);
   const failed = room.scan_status === "failed";
   const isHost = players.some((p) => (p.is_host || p.id === room.host_player_id) && p.id === currentPlayerId);
-  hostSettings.classList.toggle("hidden", !isHost || room.status !== "lobby");
   scanProgress.style.width = `${percent}%`;
   scanPercent.textContent = `${percent}%`;
   scanCounts.textContent = `${Math.min(images, 50)} / 50 images · ${Math.min(messages, 200)} / 200 messages`;
@@ -298,8 +299,11 @@ function renderGameState(state) {
     gameTitle.textContent = "Final results.";
     gameInstructions.textContent = "The game is over. Here's how everyone finished.";
     gameActionBtn.classList.add("hidden");
+    gameNextBtn.classList.add("hidden");
+    if (state.is_host) startNewGameBtn.classList.remove("hidden");
     return;
   }
+  startNewGameBtn.classList.add("hidden");
   if (phase === "selecting") {
     gameTitle.textContent = state.my_submitted ? "Combos submitted." : "Make two combos.";
     gameInstructions.textContent = state.my_submitted ? "Your pairs are locked in. Voting starts when everyone has submitted or when the timer runs out." : "Drag each image onto the message you want to pair it with. You can also select an image, then tap a message. Submit when both pairs are ready. You have up to 60 seconds.";
@@ -336,59 +340,90 @@ function renderGameState(state) {
 }
 
 function renderHand(hand) {
-  const images = hand.images || [];
+  // Always replace the existing editor. Never append a second copy after a drag.
+  gameContent.replaceChildren();
+  const images = (hand.images || []).slice(0, 2);
   const messages = hand.messages || [];
   const wrap = document.createElement("div");
-  wrap.className = "pairing-board pairing-board-clean";
+  wrap.className = "pairing-board pairing-board-stacked";
+
   const imageGrid = document.createElement("div");
   imageGrid.className = "pairing-image-grid";
-  images.slice(0, 2).forEach((img, index) => {
+  images.forEach((img, index) => {
     const card = document.createElement("article");
     card.className = "pairing-image-card";
     const heading = document.createElement("h3"); heading.textContent = `Image ${index + 1}`;
     const image = document.createElement("img"); image.src = img.url; image.alt = `Image ${index + 1}`; image.loading = "lazy";
     const slot = document.createElement("div");
     slot.className = "pair-drop-slot" + (selectedMessages[index] ? " filled" : "");
-    const picked = messages.find(m => m.id === selectedMessages[index]);
-    slot.textContent = picked ? `“${String(picked.text).replace(/^[“\"']|[”\"']$/g, "").trim()}”` : "Drop a message here";
+    slot.dataset.imageIndex = String(index);
+    const chosen = messages.find(m => m.id === selectedMessages[index]);
+    slot.textContent = chosen ? `“${String(chosen.text).replace(/^[“"']|[”"']$/g, "").trim()}”` : "Drop a message here";
     slot.addEventListener("dragover", e => { e.preventDefault(); slot.classList.add("drag-over"); });
     slot.addEventListener("dragleave", () => slot.classList.remove("drag-over"));
     slot.addEventListener("drop", e => {
       e.preventDefault(); slot.classList.remove("drag-over");
-      const id = e.dataTransfer.getData("text/plain");
-      if (id) assignMessage(index, id, hand);
+      const payload = e.dataTransfer.getData("text/plain");
+      if (payload.startsWith("slot:")) {
+        const from = Number(payload.slice(5));
+        if (Number.isInteger(from) && from >= 0 && from < 2) {
+          const moving = selectedMessages[from];
+          selectedMessages[from] = selectedMessages[index];
+          selectedMessages[index] = moving;
+          gameMessage.textContent = ""; renderHand(hand);
+        }
+      } else if (payload) assignMessage(index, payload, hand);
     });
+    // Drag a selected message out of its slot and drop it back into the message list to unassign it.
+    if (chosen) {
+      slot.draggable = true;
+      slot.addEventListener("dragstart", e => { e.dataTransfer.setData("text/plain", `slot:${index}`); e.dataTransfer.effectAllowed = "move"; });
+    }
     slot.addEventListener("click", () => {
-      if (selectedMessages[index]) { selectedMessages[index] = ""; renderHand(hand); }
-      else gameMessage.textContent = "Drag a message into this slot. You can click a message to assign it to the next empty slot.";
+      if (selectedMessages[index]) { selectedMessages[index] = ""; gameMessage.textContent = ""; renderHand(hand); }
     });
-    card.append(heading, image, slot); imageGrid.append(card);
+    card.append(heading, image, slot);
+    imageGrid.append(card);
   });
-  const messageSection = document.createElement("section"); messageSection.className = "pairing-messages";
-  const heading = document.createElement("h3"); heading.textContent = "Drag one of these five messages into a slot";
+
+  const messageSection = document.createElement("section");
+  messageSection.className = "pairing-messages pairing-messages-below";
+  const heading = document.createElement("h3"); heading.textContent = "Your five messages";
+  const hint = document.createElement("p"); hint.className = "field-note"; hint.textContent = "Drag a message into a slot below an image. Used messages disappear; drag a filled slot back here to return its message.";
   const list = document.createElement("div"); list.className = "message-list clean-message-list";
+  list.addEventListener("dragover", e => { if (e.dataTransfer.types.includes("text/plain")) e.preventDefault(); list.classList.add("drag-over"); });
+  list.addEventListener("dragleave", () => list.classList.remove("drag-over"));
+  list.addEventListener("drop", e => {
+    e.preventDefault(); list.classList.remove("drag-over");
+    const payload = e.dataTransfer.getData("text/plain");
+    if (payload.startsWith("slot:")) {
+      const index = Number(payload.slice(5));
+      if (Number.isInteger(index) && index >= 0 && index < 2) { selectedMessages[index] = ""; gameMessage.textContent = ""; renderHand(hand); }
+    }
+  });
   messages.forEach((msg, i) => {
-    const usedIndex = selectedMessages.indexOf(msg.id);
-    const item = document.createElement("div"); item.className = "message-option clean-message" + (usedIndex >= 0 ? " message-used" : "");
-    item.draggable = usedIndex < 0;
-    const text = document.createElement("span"); text.textContent = `“${String(msg.text).replace(/^[“\"']|[”\"']$/g, "").trim()}”`;
-    const hint = document.createElement("span"); hint.className = "message-drag-hint"; hint.textContent = usedIndex >= 0 ? `Used for image ${usedIndex + 1}` : "Drag";
+    if (selectedMessages.includes(msg.id)) return;
+    const item = document.createElement("div"); item.className = "message-option clean-message"; item.draggable = true;
+    const text = document.createElement("span"); text.textContent = `“${String(msg.text).replace(/^[“"']|[”"']$/g, "").trim()}”`;
+    const hint = document.createElement("span"); hint.className = "message-drag-hint"; hint.textContent = "Drag";
     item.append(text, hint);
-    item.addEventListener("dragstart", e => { if (usedIndex >= 0) { e.preventDefault(); return; } e.dataTransfer.setData("text/plain", msg.id); e.dataTransfer.effectAllowed = "move"; });
+    item.addEventListener("dragstart", e => { e.dataTransfer.setData("text/plain", String(msg.id)); e.dataTransfer.effectAllowed = "move"; });
     item.addEventListener("click", () => {
-      const already = selectedMessages.indexOf(msg.id);
-      if (already >= 0) selectedMessages[already] = "";
-      else { const empty = selectedMessages.findIndex(x => !x); if (empty < 0) { gameMessage.textContent = "Both slots are full. Remove a message from a slot first."; return; } selectedMessages[empty] = msg.id; }
-      gameMessage.textContent = ""; renderHand(hand);
+      const empty = selectedMessages.findIndex(x => !x);
+      if (empty < 0) { gameMessage.textContent = "Both slots are full. Drag a filled slot back here first."; return; }
+      assignMessage(empty, msg.id, hand);
     });
     list.append(item);
   });
-  messageSection.append(heading, list); wrap.append(imageGrid, messageSection); gameContent.append(wrap);
+  messageSection.append(heading, hint, list);
+  wrap.append(imageGrid, messageSection);
+  gameContent.append(wrap);
 }
-
 function assignMessage(imageIndex, messageId, hand) {
   const otherIndex = imageIndex === 0 ? 1 : 0;
-  if (selectedMessages[otherIndex] === messageId) selectedMessages[otherIndex] = "";
+  if (selectedMessages[otherIndex] === messageId) {
+    selectedMessages[otherIndex] = "";
+  }
   selectedMessages[imageIndex] = messageId;
   activeImageIndex = null;
   gameMessage.textContent = "";
@@ -438,13 +473,12 @@ async function nextRound() {
 }
 
 async function leaveRoom() {
-  const btn = document.querySelector("#leaveBtn");
-  btn.disabled = true;
+  if (!currentRoomId) return;
+  const buttons = [gameLeaveBtn, document.querySelector("#leaveBtn")].filter(Boolean);
+  buttons.forEach(b => b.disabled = true);
   try {
-    if (currentRoomId) {
-      const { error } = await db.rpc("mfc_leave_room", { target_room: currentRoomId });
-      if (error) throw error;
-    }
+    const { error } = await db.rpc("mfc_leave_room", { target_room: currentRoomId });
+    if (error) throw error;
     if (pollHandle) clearInterval(pollHandle);
     if (gamePollHandle) clearInterval(gamePollHandle);
     pollHandle = null; gamePollHandle = null; gameState = null; currentRoom = null; currentPlayers = [];
@@ -454,10 +488,23 @@ async function leaveRoom() {
     gameView.classList.add("hidden"); lobbyView.classList.add("hidden"); homeView.classList.remove("hidden");
     setHomeMessage("You left the room. You can create or join another one now.");
   } catch (error) {
-    setPlayerMessage(`Could not leave room: ${friendlyError(error)}. Run the updated SQL migration first.`);
-  } finally { btn.disabled = false; }
+    gameMessage.textContent = `Could not leave room: ${friendlyError(error)}. Run the updated SQL migration first.`;
+  } finally { buttons.forEach(b => b.disabled = false); }
 }
-
+async function startNewGame() {
+  if (!currentRoomId || !gameState?.is_host) return;
+  startNewGameBtn.disabled = true;
+  try {
+    const { error } = await db.rpc("mfc_restart_game", { target_room: currentRoomId });
+    if (error) throw error;
+    if (gamePollHandle) clearInterval(gamePollHandle);
+    gamePollHandle = null; gameState = null; renderedGameSignature = ""; selectedMessages = ["", ""];
+    gameView.classList.add("hidden"); lobbyView.classList.remove("hidden");
+    await refreshLobby();
+    if (!pollHandle) pollHandle = setInterval(refreshLobby, 2500);
+  } catch (error) { gameMessage.textContent = `Could not start a new game: ${friendlyError(error)}. Run the updated SQL migration first.`; }
+  finally { startNewGameBtn.disabled = false; }
+}
 createBtn.addEventListener("click", createRoom);
 startBtn.addEventListener("click", startGame);
 gameActionBtn.addEventListener("click", async () => {
@@ -495,6 +542,8 @@ document.querySelector("#copyCodeBtn").addEventListener("click", async () => {
   }
 });
 document.querySelector("#leaveBtn").addEventListener("click", leaveRoom);
+gameLeaveBtn.addEventListener("click", leaveRoom);
+startNewGameBtn.addEventListener("click", startNewGame);
 
 // Always show the create/join landing screen on a fresh page load.
 // Room session details remain in sessionStorage so the UI can offer recovery later,

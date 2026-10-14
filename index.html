@@ -94,7 +94,7 @@
 
 
     <section id="gameView" class="game-view hidden" aria-live="polite">
-      <div class="game-topline"><p id="gameRoundLabel" class="eyebrow">ROUND 1 OF 5</p><span id="gameTimer" class="game-timer">01:00</span></div>
+      <div class="game-topline"><p id="gameRoundLabel" class="eyebrow">ROUND 1 OF 5</p><div class="game-top-actions"><span id="gameTimer" class="game-timer">01:00</span><button id="gameLeaveBtn" class="text-button">Leave room</button></div></div>
       <h1 id="gameTitle" class="game-title">Make two combos.</h1>
       <p id="gameInstructions" class="intro">Drag each image onto the message you want to pair it with.</p>
       <div id="gameContent" class="game-content"></div>
@@ -102,6 +102,7 @@
       <div class="game-actions">
         <button id="gameActionBtn" class="button button-primary">Submit pairs</button>
         <button id="gameNextBtn" class="button button-secondary hidden">Start next round</button>
+        <button id="startNewGameBtn" class="button button-secondary hidden">Start new game</button>
       </div>
       <div id="scoreboard" class="scoreboard"></div>
     </section>

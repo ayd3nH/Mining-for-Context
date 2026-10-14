@@ -108,10 +108,25 @@ async function createRoom() {
   try {
     const name = validUsername();
     const session = await ensureAnonymousSession();
+
+    // Remove any stale memberships for this authenticated browser before asking
+    // Supabase to create a brand-new lobby. The recovery RPC deletes only this
+    // user's memberships; it does not delete rooms or game content.
+    const { error: cleanupError } = await db.rpc("mfc_leave_all_rooms");
+    if (cleanupError) {
+      throw new Error(`Could not clear an old room membership before creating a new room: ${friendlyError(cleanupError)}. Run the latest upgrade_content_on_demand.sql migration, then use “Clear stuck room session”.`);
+    }
+    ["mfc_room_id", "mfc_room_code", "mfc_player_id", "mfc_username"].forEach(k => {
+      sessionStorage.removeItem(k);
+      localStorage.removeItem(k);
+    });
+
     const { data, error } = await db.rpc("create_game_room", { player_name: name });
     if (error) throw error;
     const result = Array.isArray(data) ? data[0] : data;
-    if (!result) throw new Error("The room was not created. Please try again.");
+    if (!result || !result.room_id || !result.room_code) {
+      throw new Error("Supabase did not return a valid new room. Check the create_game_room function and its returned columns.");
+    }
     enterRoom(result.room_id, result.room_code, result.player_id, session.user.id, name);
   } catch (error) {
     setHomeMessage(friendlyError(error));
